@@ -1,0 +1,305 @@
+// WON HOUSE — pont entre l'application et Firebase (connexion, données partagées, photos, caméra).
+// L'application (www/index.html) appelle window.claude.use("db" | "assets" | "user" | "downloads") :
+// ce fichier fournit ces mêmes fonctions, branchées sur Firebase Auth + Firestore.
+import { initializeApp } from "firebase/app";
+import {
+  initializeAuth, indexedDBLocalPersistence, browserLocalPersistence,
+  onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
+} from "firebase/auth";
+import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  doc, collection, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
+} from "firebase/firestore";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+import SEED from "./seed.json";
+
+const cfg = window.FIREBASE_CONFIG;
+let app = null, auth = null, fs = null, currentUser = null;
+let readyResolve; const ready = new Promise(r => (readyResolve = r));
+
+/* ---------------- écran de connexion ---------------- */
+const CSS = `
+.wh-login{position:fixed;inset:0;z-index:100;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E);display:flex;align-items:center;justify-content:center;padding:20px;font-family:"Nunito Sans",system-ui,sans-serif}
+.wh-card{background:#fff;color:#1B211E;border-radius:22px;padding:22px 18px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.wh-card h1{font:800 22px/1.1 system-ui,sans-serif;letter-spacing:.05em;margin:6px 0 2px;text-align:center}
+.wh-card p{color:#5E6862;text-align:center;margin:0 0 16px;font-size:14px}
+.wh-card label{display:block;font-size:12px;font-weight:700;color:#5E6862;text-transform:uppercase;letter-spacing:.08em;margin:12px 0 5px}
+.wh-card input{width:100%;box-sizing:border-box;border:1px solid #D7DBD4;background:#F3F4F1;border-radius:12px;padding:13px;font-size:16px}
+.wh-card button{width:100%;margin-top:18px;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E)}
+.wh-card button:disabled{opacity:.6}
+.wh-card .err{color:#B42318;font-size:13.5px;text-align:center;margin-top:12px;min-height:18px}
+.wh-card .link{background:none;color:#8C1D2B;font-weight:700;font-size:13.5px;padding:8px;margin-top:6px}
+.wh-logo{width:72px;height:72px;border-radius:22px;margin:0 auto;display:grid;place-items:center;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E)}
+.wh-cam{position:fixed;inset:0;z-index:200;background:#000;display:flex;flex-direction:column}
+.wh-cam video,.wh-cam img{flex:1;width:100%;height:100%;object-fit:cover;min-height:0}
+.wh-cam .bar{display:flex;align-items:center;justify-content:space-around;padding:16px 10px calc(18px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.85)}
+.wh-cam .top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 14px 12px;background:linear-gradient(rgba(0,0,0,.6),transparent);color:#fff;font:700 15px system-ui,sans-serif}
+.wh-cam .ic{width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px}
+.wh-cam .shoot{width:78px;height:78px;border-radius:50%;border:5px solid #fff;background:#E39A1E;box-shadow:0 0 0 4px rgba(227,154,30,.35)}
+.wh-cam .shoot:active{transform:scale(.92)}
+.wh-cam .txt{border:0;border-radius:14px;padding:14px 22px;font-size:16px;font-weight:800}
+.wh-cam .ok{background:linear-gradient(135deg,#B8352A,#E39A1E);color:#fff}
+.wh-cam .no{background:rgba(255,255,255,.18);color:#fff}
+.wh-cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .15s}
+`;
+const LOGO = `<svg viewBox="0 0 40 40" width="50" height="50" fill="none"><g stroke="#FFE2B0" stroke-width="2.2" stroke-linecap="round"><path d="M14 13c-2-3 2-4 0-7"/><path d="M20 13c-2-3 2-4 0-7"/><path d="M26 13c-2-3 2-4 0-7"/></g><ellipse cx="20" cy="25" rx="15" ry="4.2" fill="#fff"/><path d="M8 24c1 7 6 10 12 10s11-3 12-10" fill="#fff"/><ellipse cx="20" cy="24" rx="11" ry="2.6" fill="#F3C969"/></svg>`;
+function addCss() { const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st); }
+
+function showLogin(message) {
+  let el = document.getElementById("wh-login");
+  if (el) return;
+  el = document.createElement("div"); el.id = "wh-login"; el.className = "wh-login";
+  el.innerHTML = `<form class="wh-card" autocomplete="on">
+    <div class="wh-logo">${LOGO}</div>
+    <h1>WON HOUSE</h1><p>Caisse du restaurant</p>
+    <label for="wh-email">E-mail</label><input id="wh-email" type="email" autocomplete="username" required>
+    <label for="wh-pass">Mot de passe</label><input id="wh-pass" type="password" autocomplete="current-password" required>
+    <label for="wh-name">Votre prénom</label><input id="wh-name" placeholder="ex. Awa" autocomplete="given-name">
+    <button type="submit" id="wh-go">Se connecter</button>
+    <div class="err" id="wh-err">${message || ""}</div>
+    <button type="button" class="link" id="wh-forgot">Mot de passe oublié ?</button>
+  </form>`;
+  document.body.appendChild(el);
+  try { document.getElementById("wh-name").value = localStorage.getItem("wh-name") || ""; } catch (e) {}
+  el.querySelector("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("wh-go"), err = document.getElementById("wh-err");
+    const email = document.getElementById("wh-email").value.trim(), pass = document.getElementById("wh-pass").value;
+    const name = document.getElementById("wh-name").value.trim();
+    btn.disabled = true; btn.textContent = "Connexion…"; err.textContent = "";
+    try {
+      try { localStorage.setItem("wh-name", name); } catch (e) {}
+      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      if (name) await setDoc(doc(fs, "users", cred.user.uid), { name, email }, { merge: true });
+    } catch (ex) {
+      const c = ex && ex.code || "";
+      err.textContent = c.includes("network") ? "Pas de connexion internet. Réessayez."
+        : c.includes("too-many") ? "Trop d'essais. Attendez quelques minutes."
+        : "E-mail ou mot de passe incorrect.";
+      btn.disabled = false; btn.textContent = "Se connecter";
+    }
+  });
+  document.getElementById("wh-forgot").addEventListener("click", async () => {
+    const email = document.getElementById("wh-email").value.trim(), err = document.getElementById("wh-err");
+    if (!email) { err.textContent = "Tapez d'abord votre e-mail."; return; }
+    try { await sendPasswordResetEmail(auth, email); err.style.color = "#1F7A4D"; err.textContent = "Un e-mail pour changer le mot de passe a été envoyé."; }
+    catch (e) { err.textContent = "Envoi impossible. Vérifiez l'e-mail."; }
+  });
+}
+function hideLogin() { document.getElementById("wh-login")?.remove(); }
+
+/* ---------------- adaptateur base de données ---------------- */
+const segs = p => p.split("/");
+function wrapDocSnap(s) {
+  return { id: s.id, exists: s.exists(), data: () => (s.exists() ? s.data() : undefined),
+    metadata: { fromCache: s.metadata.fromCache, hasPendingWrites: s.metadata.hasPendingWrites } };
+}
+function docApi(path) {
+  const ref = doc(fs, ...segs(path));
+  return {
+    id: ref.id, path,
+    get: async () => wrapDocSnap(await getDoc(ref)),
+    // fusion profonde : ne jamais écraser les saisies faites par un autre téléphone
+    set: (data) => setDoc(ref, data, { merge: true }),
+    update: (data) => setDoc(ref, data, { merge: true }),
+    delete: () => deleteDoc(ref),
+    acquire: async () => ({ acquired: true }),
+    onSnapshot: (next, error) => onSnapshot(ref, { includeMetadataChanges: false }, s => next(wrapDocSnap(s)), e => error && error({ code: "unavailable", message: String(e) })),
+    collection: (sub) => colApi(path + "/" + sub),
+  };
+}
+function colApi(path) {
+  const ref = collection(fs, ...segs(path));
+  return {
+    path,
+    doc: (id) => docApi(path + "/" + (id || Math.random().toString(36).slice(2) + Date.now().toString(36))),
+    onSnapshot: (next, error) => onSnapshot(ref, s => {
+      const docs = s.docs.map(wrapDocSnap);
+      next({ docs, size: docs.length, empty: !docs.length, metadata: s.metadata,
+        docChanges: () => s.docChanges().map(c => ({ type: c.type, doc: wrapDocSnap(c.doc), oldIndex: c.oldIndex, newIndex: c.newIndex })) });
+    }, e => error && error({ code: "unavailable", message: String(e) })),
+    get: async () => { const s = await getDocs(ref); const docs = s.docs.map(wrapDocSnap); return { docs, size: docs.length, empty: !docs.length, docChanges: () => [] }; },
+  };
+}
+const dbApi = { doc: docApi, collection: colApi };
+
+/* ---------------- photos (stockées dans Firestore, collection "photos") ---------------- */
+const photoCache = {};
+function blobToDataURL(b) { return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(b); }); }
+async function recompress(blob) {
+  // image déjà réduite par l'application ; on s'assure qu'elle reste légère (< 700 Ko)
+  let url = await blobToDataURL(blob);
+  if (url.length < 700000) return url;
+  const img = await createImageBitmap(blob); const k = Math.min(1, 1024 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.7);
+}
+const assetsApi = {
+  upload: async (blob) => {
+    const data = await recompress(blob);
+    const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    photoCache[id] = data;
+    await setDoc(doc(fs, "photos", id), { data, at: new Date().toISOString(), by: currentUser?.uid || null });
+    return { id, url: data, sizeBytes: data.length, contentType: "image/jpeg" };
+  },
+  list: async () => ({ assets: [], usage: {} }),
+  delete: async (id) => deleteDoc(doc(fs, "photos", id)),
+};
+async function hydrate(img) {
+  const src = img.getAttribute("src") || "";
+  const m = src.match(/\/_blob\/([A-Za-z0-9_-]+)/); if (!m) return;
+  const id = m[1];
+  img.removeAttribute("src"); img.style.background = "#E9EBE6";
+  if (!photoCache[id]) {
+    try { const s = await getDoc(doc(fs, "photos", id)); photoCache[id] = s.exists() ? s.data().data : ""; } catch (e) { photoCache[id] = ""; }
+  }
+  if (photoCache[id]) img.src = photoCache[id];
+}
+function watchImages() {
+  const scan = root => root.querySelectorAll && root.querySelectorAll('img[src*="/_blob/"]').forEach(hydrate);
+  new MutationObserver(ms => ms.forEach(m => {
+    m.addedNodes.forEach(n => { if (n.nodeType === 1) { if (n.tagName === "IMG") hydrate(n); scan(n); } });
+    if (m.type === "attributes" && m.target.tagName === "IMG") hydrate(m.target);
+  })).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
+  scan(document);
+}
+
+/* ---------------- utilisateurs ---------------- */
+const userApi = {
+  id: async () => currentUser?.uid || null,
+  me: async () => ({ id: currentUser?.uid }),
+  isOwner: () => false, canEdit: () => true, can: () => true,
+  profiles: async (ids) => {
+    const out = {};
+    await Promise.all(ids.map(async id => { try { const s = await getDoc(doc(fs, "users", id)); out[id] = { name: s.exists() ? (s.data().name || "") : "" }; } catch (e) { out[id] = { name: "" }; } }));
+    return out;
+  },
+};
+
+/* ---------------- export (fichier pour Excel, partagé par WhatsApp, e-mail…) ---------------- */
+const downloadsApi = {
+  save: async ({ filename, data }) => {
+    const text = typeof data === "string" ? data : await data.text();
+    const r = await Filesystem.writeFile({ path: filename, data: text, directory: Directory.Cache, encoding: Encoding.UTF8 });
+    await Share.share({ title: filename, files: [r.uri], dialogTitle: "Envoyer le fichier" });
+    return { status: "delivered" };
+  },
+};
+
+/* ---------------- caméra en direct ---------------- */
+function openCamera(title) {
+  return new Promise(async (resolve) => {
+    let stream = null, facing = "environment";
+    const el = document.createElement("div"); el.className = "wh-cam";
+    el.innerHTML = `<video playsinline autoplay muted></video><div class="flash"></div>
+      <div class="top"><span>📷 ${title || "Photo"}</span><span id="wh-clock"></span></div>
+      <div class="bar"><button class="ic" data-x="close" aria-label="Fermer">✕</button><button class="shoot" data-x="shoot" aria-label="Prendre la photo"></button><button class="ic" data-x="flip" aria-label="Changer de caméra">🔄</button></div>`;
+    document.body.appendChild(el);
+    const video = el.querySelector("video");
+    const clock = el.querySelector("#wh-clock");
+    const tick = setInterval(() => { const d = new Date(); clock.textContent = d.toLocaleDateString("fr-FR") + " " + String(d.getHours()).padStart(2, "0") + "h" + String(d.getMinutes()).padStart(2, "0"); }, 1000);
+    const stop = () => { stream && stream.getTracks().forEach(t => t.stop()); stream = null; };
+    const done = (file) => { clearInterval(tick); stop(); el.remove(); resolve(file); };
+    async function start() {
+      stop();
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        video.srcObject = stream; await video.play().catch(() => {});
+      } catch (e) { done("fallback"); }
+    }
+    el.addEventListener("click", async (e) => {
+      const x = e.target.closest("[data-x]")?.dataset.x; if (!x) return;
+      if (x === "close") done(null);
+      else if (x === "flip") { facing = facing === "environment" ? "user" : "environment"; start(); }
+      else if (x === "shoot") {
+        const c = document.createElement("canvas"); c.width = video.videoWidth || 1280; c.height = video.videoHeight || 720;
+        c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+        const fl = el.querySelector(".flash"); fl.style.opacity = ".8"; setTimeout(() => (fl.style.opacity = "0"), 120);
+        const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+        stop();
+        // aperçu : garder ou reprendre
+        const url = URL.createObjectURL(blob);
+        video.replaceWith(Object.assign(document.createElement("img"), { src: url, alt: "Aperçu" }));
+        el.querySelector(".bar").innerHTML = `<button class="txt no" data-y="again">↺ Reprendre</button><button class="txt ok" data-y="use">✓ Utiliser la photo</button>`;
+        el.querySelector(".bar").onclick = (ev) => {
+          const y = ev.target.closest("[data-y]")?.dataset.y; if (!y) return;
+          if (y === "use") done(new File([blob], "photo-" + Date.now() + ".jpg", { type: "image/jpeg", lastModified: Date.now() }));
+          else { el.remove(); clearInterval(tick); URL.revokeObjectURL(url); openCamera(title).then(resolve); }
+        };
+      }
+    });
+    start();
+  });
+}
+window.__whCamera = openCamera;
+function interceptCameraInputs() {
+  // Les boutons « Prendre une photo » de l'application ouvrent la caméra en direct au lieu du sélecteur de fichiers.
+  document.addEventListener("click", async (e) => {
+    const label = e.target.closest("label"); if (!label) return;
+    const input = label.querySelector('input[type="file"][capture]'); if (!input) return;
+    if (!navigator.mediaDevices?.getUserMedia) return; // pas de caméra en direct : comportement normal
+    e.preventDefault(); e.stopPropagation();
+    const title = input.id === "snap-v" ? "Plat vendu" : input.id === "snap-a" ? "Achat" : (document.querySelector(".sheet h3")?.textContent || "Photo");
+    const file = await openCamera(title);
+    if (file === "fallback") { input.removeAttribute("capture"); input.click(); setTimeout(() => input.setAttribute("capture", "environment"), 500); return; }
+    if (!file) return;
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, true);
+}
+
+/* ---------------- compte + import du cahier (onglet Carte) ---------------- */
+let hasData = null;
+window.__extraCarte = () => {
+  if (!currentUser) return "";
+  const imp = hasData === false ? `<button class="btn primary" style="width:100%;margin-top:10px" data-wh="import">📥 Importer le cahier du 26/08 au 25/09/2026</button>` : "";
+  return `<h2 class="sec">Compte</h2><div class="list" style="padding:12px 14px">
+    <div style="font-size:14px">Connecté : <b>${(currentUser.email || "").replace(/</g, "&lt;")}</b></div>
+    <button class="btn ghost small" style="margin-top:10px" data-wh="logout">Se déconnecter</button>${imp}</div>`;
+};
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-wh]"); if (!b) return;
+  if (b.dataset.wh === "logout") { if (b.dataset.sure) { await signOut(auth); location.reload(); } else { b.dataset.sure = "1"; b.textContent = "Confirmer la déconnexion ?"; } }
+  if (b.dataset.wh === "import") {
+    b.disabled = true; b.textContent = "Import en cours…";
+    try {
+      const batch = writeBatch(fs);
+      for (const [id, d] of Object.entries(SEED.jours)) batch.set(doc(fs, "jours", id), d, { merge: true });
+      batch.set(doc(fs, "config", "tarifs"), SEED.tarifs, { merge: true });
+      await batch.commit(); hasData = true; b.textContent = "✓ Cahier importé"; window.__rerender && window.__rerender();
+    } catch (ex) { b.disabled = false; b.textContent = "Échec : vérifiez internet et réessayez"; }
+  }
+});
+
+/* ---------------- démarrage ---------------- */
+function missingConfig() {
+  document.addEventListener("DOMContentLoaded", () => {
+    const el = document.createElement("div"); el.className = "wh-login";
+    el.innerHTML = `<div class="wh-card"><div class="wh-logo">${LOGO}</div><h1>WON HOUSE</h1><p>Configuration Firebase manquante.<br>Cette version de l'application n'est pas encore reliée à la base de données du restaurant.</p></div>`;
+    document.body.appendChild(el);
+  });
+}
+document.addEventListener("DOMContentLoaded", () => { addCss(); if (cfg) { watchImages(); interceptCameraInputs(); } });
+
+if (!cfg || !cfg.apiKey) {
+  addCss(); missingConfig();
+  window.claude = { use: async () => null };
+} else {
+  app = initializeApp(cfg);
+  auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
+  fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  onAuthStateChanged(auth, async (u) => {
+    currentUser = u;
+    if (u) {
+      hideLogin(); readyResolve(true);
+      try { const s = await getDocs(query(collection(fs, "jours"), limit(1))); hasData = !s.empty; window.__rerender && window.__rerender(); } catch (e) {}
+    } else {
+      const show = () => showLogin();
+      document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", show) : show();
+    }
+  });
+  const table = { db: dbApi, assets: assetsApi, user: userApi, downloads: downloadsApi };
+  window.claude = { use: async (name) => { await ready; return table[name] || null; } };
+}

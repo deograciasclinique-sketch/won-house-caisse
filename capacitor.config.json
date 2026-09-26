@@ -1,0 +1,7 @@
+{
+  "appId": "com.wonhouse.caisse",
+  "appName": "WON HOUSE",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "server": { "androidScheme": "https" }
+}
