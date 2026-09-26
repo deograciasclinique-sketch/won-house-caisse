@@ -65,7 +65,7 @@ function showLogin(message) {
   el.querySelector("form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = document.getElementById("wh-go"), err = document.getElementById("wh-err");
-    const email = document.getElementById("wh-email").value.trim(), pass = document.getElementById("wh-pass").value;
+    const email = document.getElementById("wh-email").value.trim().toLowerCase(), pass = document.getElementById("wh-pass").value;
     const name = document.getElementById("wh-name").value.trim();
     btn.disabled = true; btn.textContent = "Connexion…"; err.textContent = "";
     try {
@@ -74,9 +74,21 @@ function showLogin(message) {
       if (name) await setDoc(doc(fs, "users", cred.user.uid), { name, email }, { merge: true });
     } catch (ex) {
       const c = ex && ex.code || "";
-      err.textContent = c.includes("network") ? "Pas de connexion internet. Réessayez."
-        : c.includes("too-many") ? "Trop d'essais. Attendez quelques minutes."
-        : "E-mail ou mot de passe incorrect.";
+      const msg = {
+        "auth/network-request-failed": "Pas de connexion internet. Réessayez.",
+        "auth/too-many-requests": "Trop d'essais. Attendez quelques minutes.",
+        "auth/invalid-email": "L'e-mail n'est pas bien écrit (ex. nom@gmail.com).",
+        "auth/missing-password": "Tapez le mot de passe.",
+        "auth/user-not-found": "Ce compte n'existe pas. Créez-le dans Firebase → Authentication → Users.",
+        "auth/wrong-password": "Mot de passe incorrect.",
+        "auth/invalid-credential": "E-mail ou mot de passe incorrect, ou compte pas encore créé dans Firebase → Authentication → Users.",
+        "auth/invalid-login-credentials": "E-mail ou mot de passe incorrect, ou compte pas encore créé dans Firebase → Authentication → Users.",
+        "auth/user-disabled": "Ce compte a été désactivé par le propriétaire.",
+        "auth/operation-not-allowed": "La connexion par e-mail n'est pas activée : Firebase → Authentication → Sign-in method → E-mail/Mot de passe → Activer.",
+        "auth/configuration-not-found": "Authentication n'est pas encore activé : Firebase → Authentication → Commencer, puis activer E-mail/Mot de passe.",
+        "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "Configuration Firebase invalide.",
+      };
+      err.textContent = (msg[c] || ("Connexion refusée (" + (c || "erreur inconnue") + ")."));
       btn.disabled = false; btn.textContent = "Se connecter";
     }
   });
