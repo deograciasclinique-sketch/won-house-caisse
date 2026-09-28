@@ -351,7 +351,7 @@ async function saveTarifs(t){
 function handleWriteError(e){
   if(e&&e.code==="invalid_argument"){readOnly=true;toast("Enregistrement refusé : reconnectez-vous puis réessayez.");}
   else if(e&&e.code==="quota_exceeded"){toast("Espace de stockage plein. Prévenez le propriétaire.");}
-  else toast("Pas enregistré : vérifiez la connexion puis réessayez.");
+  else toast(e&&e.wh?e.wh:"Pas enregistré : vérifiez la connexion puis réessayez.");
   render();
 }
 
@@ -367,11 +367,11 @@ async function boot(){
   if(user){try{myId=await user.id();}catch(e){myId=null;}}
   const mode=document.getElementById("mode");
   if(db){
-    S.mode="live"; mode.textContent="● Synchronisé"; mode.className="mode live";
+    S.mode="live"; mode.textContent="Connexion…"; mode.className="mode";
     let got=0;
     db.collection("jours").onSnapshot(snap=>{
       if(got&1){const remote=snap.docChanges().some(c=>c.type!=="removed"&&!c.doc.metadata.hasPendingWrites&&!(recentLocal[c.doc.id]&&Date.now()-recentLocal[c.doc.id]<5000));if(remote){toast("🔄 Nouvelles données reçues d'un autre téléphone");pulse();}}
-      const raw={},m={};snap.docs.forEach(x=>{const o=x.data();if(o){raw[x.id]=o;m[x.id]=normDay(x.id,o);}});S.raw=raw;S.days=m;if(!(got&1))S.anim=true;got|=1;render();},err=>{toast("Connexion perdue. Rechargez la page.");});
+      const raw={},m={};snap.docs.forEach(x=>{const o=x.data();if(o){raw[x.id]=o;m[x.id]=normDay(x.id,o);}});S.raw=raw;S.days=m;if(!(got&1))S.anim=true;got|=1;render();},err=>{toast(err&&err.wh?err.wh:"Connexion perdue. Relancez l'application.");});
     db.doc("config/tarifs").onSnapshot(snap=>{if(snap.exists){S.tarifs=snap.data();}got|=2;render();},()=>{});
   }else{
     S.mode="local"; mode.textContent="Sur ce téléphone"; mode.className="mode local";

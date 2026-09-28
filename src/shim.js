@@ -8,7 +8,7 @@ import {
 } from "firebase/auth";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, collection, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
+  doc, collection, getDoc, getDocs, getDocFromServer, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
 } from "firebase/firestore";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -101,6 +101,37 @@ function showLogin(message) {
 }
 function hideLogin() { document.getElementById("wh-login")?.remove(); }
 
+/* ---------------- état de la synchronisation ---------------- */
+function explain(e) {
+  const c = (e && e.code) || "", m = String((e && e.message) || e || "");
+  if (c === "permission-denied" || /permission/i.test(m)) return "Firebase refuse l'accès : les règles Firestore ne sont pas publiées. Console Firebase → Firestore Database → Règles → coller les règles → Publier.";
+  if (/does not exist|not.?found/i.test(m) || c === "not-found") return "La base Firestore n'existe pas encore. Console Firebase → Firestore Database → Créer une base de données.";
+  if (c === "failed-precondition") return "Base Firestore pas prête : " + m;
+  if (c === "unauthenticated") return "Session expirée : déconnectez-vous puis reconnectez-vous.";
+  if (c === "unavailable" || /offline|network/i.test(m)) return "Pas de connexion au serveur. Vérifiez internet : les saisies partiront dès le retour du réseau.";
+  if (c === "resource-exhausted") return "Quota Firebase gratuit dépassé pour aujourd'hui.";
+  return "Erreur Firebase (" + (c || "inconnue") + ") : " + m;
+}
+const ST = { state: "init", msg: "", lastServer: null, size: null };
+function setPill() {
+  const m = document.getElementById("mode"); if (!m) return;
+  const t = { ok: ["● Synchronisé", "mode live"], sending: ["◐ Envoi…", "mode local"], offline: ["◐ Hors ligne", "mode local"], error: ["⚠ Pas synchronisé", "mode local"], init: ["Connexion…", "mode"] }[ST.state];
+  m.textContent = t[0]; m.className = t[1]; if (ST.state === "error") { m.style.background = "#FBE7E4"; m.style.color = "#B42318"; } else { m.style.background = ""; m.style.color = ""; }
+  m.onclick = () => { const b = document.querySelector('.tabs [data-tab="carte"]'); b && b.click(); setTimeout(() => document.getElementById("wh-diag")?.scrollIntoView({ behavior: "smooth" }), 300); };
+}
+function setState(state, msg) { const ch = ST.state !== state || ST.msg !== msg; ST.state = state; ST.msg = msg || ""; setPill(); if (ch && document.getElementById("wh-diag")) window.__rerender && window.__rerender(); }
+function watchStatus() {
+  onSnapshot(collection(fs, "jours"), { includeMetadataChanges: true }, s => {
+    if (!s.metadata.fromCache) { ST.lastServer = Date.now(); ST.size = s.size; hasData = s.size > 0; setState(s.metadata.hasPendingWrites ? "sending" : "ok"); }
+    else if (ST.state !== "error") setState(navigator.onLine === false ? "offline" : (ST.lastServer ? "sending" : "init"));
+  }, e => setState("error", explain(e)));
+  const beat = () => currentUser && setDoc(doc(fs, "diag", currentUser.uid), { name: (localStorage.getItem("wh-name") || ""), email: currentUser.email || "", lastSeen: Date.now(), device: navigator.userAgent.slice(0, 120) }, { merge: true }).catch(e => setState("error", explain(e)));
+  beat(); setInterval(beat, 5 * 60 * 1000);
+  setInterval(setPill, 3000);
+  window.addEventListener("offline", () => setState("offline")); window.addEventListener("online", () => ST.state === "offline" && setState("sending"));
+}
+function guard(p) { return p.catch(e => { setState("error", explain(e)); const x = new Error(explain(e)); x.code = e && e.code; x.wh = explain(e); throw x; }); }
+
 /* ---------------- adaptateur base de données ---------------- */
 const segs = p => p.split("/");
 function wrapDocSnap(s) {
@@ -111,13 +142,13 @@ function docApi(path) {
   const ref = doc(fs, ...segs(path));
   return {
     id: ref.id, path,
-    get: async () => wrapDocSnap(await getDoc(ref)),
+    get: async () => wrapDocSnap(await guard(getDoc(ref))),
     // fusion profonde : ne jamais écraser les saisies faites par un autre téléphone
-    set: (data) => setDoc(ref, data, { merge: true }),
-    update: (data) => setDoc(ref, data, { merge: true }),
-    delete: () => deleteDoc(ref),
+    set: (data) => guard(setDoc(ref, data, { merge: true })),
+    update: (data) => guard(setDoc(ref, data, { merge: true })),
+    delete: () => guard(deleteDoc(ref)),
     acquire: async () => ({ acquired: true }),
-    onSnapshot: (next, error) => onSnapshot(ref, { includeMetadataChanges: false }, s => next(wrapDocSnap(s)), e => error && error({ code: "unavailable", message: String(e) })),
+    onSnapshot: (next, error) => onSnapshot(ref, { includeMetadataChanges: false }, s => next(wrapDocSnap(s)), e => { setState("error", explain(e)); error && error({ code: "unavailable", message: explain(e), wh: explain(e) }); }),
     collection: (sub) => colApi(path + "/" + sub),
   };
 }
@@ -130,7 +161,7 @@ function colApi(path) {
       const docs = s.docs.map(wrapDocSnap);
       next({ docs, size: docs.length, empty: !docs.length, metadata: s.metadata,
         docChanges: () => s.docChanges().map(c => ({ type: c.type, doc: wrapDocSnap(c.doc), oldIndex: c.oldIndex, newIndex: c.newIndex })) });
-    }, e => error && error({ code: "unavailable", message: String(e) })),
+    }, e => { setState("error", explain(e)); error && error({ code: "unavailable", message: explain(e), wh: explain(e) }); }),
     get: async () => { const s = await getDocs(ref); const docs = s.docs.map(wrapDocSnap); return { docs, size: docs.length, empty: !docs.length, docChanges: () => [] }; },
   };
 }
@@ -264,16 +295,45 @@ function interceptCameraInputs() {
 
 /* ---------------- compte + import du cahier (onglet Carte) ---------------- */
 let hasData = null;
+let diagList = null, testMsg = "";
+const esc2 = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ago = t => { if (!t) return "jamais"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "à l'instant" : m < 60 ? "il y a " + m + " min" : m < 1440 ? "il y a " + Math.round(m / 60) + " h" : "il y a " + Math.round(m / 1440) + " j"; };
+async function loadDiag() { try { const s = await getDocs(collection(fs, "diag")); diagList = s.docs.map(d => d.data()).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)); } catch (e) { diagList = []; setState("error", explain(e)); } window.__rerender && window.__rerender(); }
 window.__extraCarte = () => {
   if (!currentUser) return "";
+  if (diagList === null) { diagList = []; loadDiag(); }
   const imp = hasData === false ? `<button class="btn primary" style="width:100%;margin-top:10px" data-wh="import">📥 Importer le cahier du 26/08 au 25/09/2026</button>` : "";
-  return `<h2 class="sec">Compte</h2><div class="list" style="padding:12px 14px">
-    <div style="font-size:14px">Connecté : <b>${(currentUser.email || "").replace(/</g, "&lt;")}</b></div>
+  const col = ST.state === "ok" ? "#1F7A4D" : ST.state === "error" ? "#B42318" : "#9A6400";
+  const lbl = { ok: "✓ Synchronisé avec le serveur", sending: "Envoi en cours…", offline: "Hors ligne : les saisies partiront au retour d'internet", error: "Pas synchronisé", init: "Connexion au serveur…" }[ST.state];
+  const people = (diagList || []).map(d => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;padding:4px 0"><span>👤 <b>${esc2(d.name || d.email || "?")}</b> <span style="color:#5E6862">${esc2(d.email || "")}</span></span><span style="color:#5E6862;white-space:nowrap">${ago(d.lastSeen)}</span></div>`).join("");
+  return `<h2 class="sec" id="wh-diag">Synchronisation</h2><div class="list" style="padding:12px 14px">
+    <div style="font-weight:800;color:${col}">${lbl}</div>
+    ${ST.msg ? `<div style="font-size:13.5px;color:#B42318;margin-top:6px">${esc2(ST.msg)}</div>` : ""}
+    <div style="font-size:13px;color:#5E6862;margin-top:6px">Dernier contact avec le serveur : ${ago(ST.lastServer)}${ST.size != null ? " · " + ST.size + " jours enregistrés" : ""}</div>
+    <div style="font-size:12px;font-weight:800;color:#5E6862;text-transform:uppercase;letter-spacing:.08em;margin-top:12px">Téléphones reliés à la même caisse</div>
+    ${people || `<div style="font-size:13.5px;color:#5E6862">Aucun pour l'instant.</div>`}
+    <button class="btn ghost small" style="margin-top:10px" data-wh="test">🔄 Tester la synchronisation</button>
+    ${testMsg ? `<div style="font-size:13.5px;margin-top:8px">${testMsg}</div>` : ""}
+  </div>
+  <h2 class="sec">Compte</h2><div class="list" style="padding:12px 14px">
+    <div style="font-size:14px">Connecté : <b>${esc2(currentUser.email || "")}</b></div>
     <button class="btn ghost small" style="margin-top:10px" data-wh="logout">Se déconnecter</button>${imp}</div>`;
 };
+async function runTest() {
+  testMsg = "Test en cours…"; window.__rerender && window.__rerender();
+  try {
+    const ref = doc(fs, "diag", currentUser.uid); const stamp = Date.now();
+    await Promise.race([setDoc(ref, { test: stamp, lastSeen: stamp, name: localStorage.getItem("wh-name") || "", email: currentUser.email || "" }, { merge: true }), new Promise((_, ko) => setTimeout(() => ko({ code: "unavailable", message: "délai dépassé" }), 12000))]);
+    const back = await getDocFromServer(ref);
+    if (back.exists() && back.data().test === stamp) { testMsg = `<b style="color:#1F7A4D">✓ Tout fonctionne : ce téléphone écrit et lit bien sur le serveur. Les autres téléphones connectés voient les mêmes données.</b>`; setState("ok"); }
+    else testMsg = `<b style="color:#B42318">Réponse inattendue du serveur.</b>`;
+  } catch (e) { testMsg = `<b style="color:#B42318">✗ ${esc2(explain(e))}</b>`; setState("error", explain(e)); }
+  await loadDiag();
+}
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-wh]"); if (!b) return;
   if (b.dataset.wh === "logout") { if (b.dataset.sure) { await signOut(auth); location.reload(); } else { b.dataset.sure = "1"; b.textContent = "Confirmer la déconnexion ?"; } }
+  if (b.dataset.wh === "test") runTest();
   if (b.dataset.wh === "import") {
     b.disabled = true; b.textContent = "Import en cours…";
     try {
@@ -281,7 +341,7 @@ document.addEventListener("click", async (e) => {
       for (const [id, d] of Object.entries(SEED.jours)) batch.set(doc(fs, "jours", id), d, { merge: true });
       batch.set(doc(fs, "config", "tarifs"), SEED.tarifs, { merge: true });
       await batch.commit(); hasData = true; b.textContent = "✓ Cahier importé"; window.__rerender && window.__rerender();
-    } catch (ex) { b.disabled = false; b.textContent = "Échec : vérifiez internet et réessayez"; }
+    } catch (ex) { b.disabled = false; b.textContent = "Échec — réessayer"; setState("error", explain(ex)); testMsg = `<b style="color:#B42318">✗ Import impossible : ${esc2(explain(ex))}</b>`; window.__rerender && window.__rerender(); }
   }
 });
 
@@ -306,7 +366,7 @@ if (!cfg || !cfg.apiKey) {
     currentUser = u;
     if (u) {
       hideLogin(); readyResolve(true);
-      try { const s = await getDocs(query(collection(fs, "jours"), limit(1))); hasData = !s.empty; window.__rerender && window.__rerender(); } catch (e) {}
+      watchStatus();
     } else {
       const show = () => showLogin();
       document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", show) : show();
