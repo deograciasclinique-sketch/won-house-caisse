@@ -8,6 +8,13 @@ photos datées prises avec la caméra, et synchronisation entre tous les télép
 Onglet **Releases** du dépôt → dernière version → **WON-HOUSE-caisse.apk**.
 Sur le téléphone : ouvrir le fichier, autoriser « installer des applications inconnues », puis Installer.
 
+## Hors connexion
+L'application fonctionne sans internet (après une première connexion au compte).
+Chaque saisie (vente, achat, caisse, photo, carte) est enregistrée tout de suite sur le téléphone ;
+le badge en haut affiche « Hors ligne · N en attente ». Les saisies restent gardées même si
+l'application est fermée ou le téléphone éteint, et partent seules au serveur dès que internet
+revient (message « ✓ Saisies hors ligne envoyées au serveur »).
+
 ## Comptes
 Les comptes se créent dans la console Firebase → Authentication → Users → Ajouter un utilisateur.
 Chaque personne se connecte une fois avec son e-mail et son mot de passe ; la connexion reste mémorisée.

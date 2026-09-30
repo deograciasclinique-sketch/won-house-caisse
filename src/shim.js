@@ -7,7 +7,7 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
 } from "firebase/auth";
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites,
   doc, collection, getDoc, getDocs, getDocFromServer, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
 } from "firebase/firestore";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
@@ -113,9 +113,44 @@ function explain(e) {
   return "Erreur Firebase (" + (c || "inconnue") + ") : " + m;
 }
 const ST = { state: "init", msg: "", lastServer: null, size: null };
+
+/* ---------------- saisies hors ligne ----------------
+   Chaque enregistrement est écrit tout de suite dans la base du téléphone (cache Firestore
+   persistant) : l'application n'attend jamais le serveur. Firebase garde la file d'envoi,
+   même si l'application est fermée, et l'envoie dès que internet revient. */
+const PKEY = "wh-pending";
+let pending = 0;            // saisies de cette session pas encore confirmées par le serveur
+let oldPending = 0;         // saisies laissées en attente par une session précédente
+try { oldPending = Number(localStorage.getItem(PKEY)) || 0; } catch (e) {}
+const waiting = () => pending + oldPending;
+function savePending() { try { localStorage.setItem(PKEY, String(waiting())); } catch (e) {} }
+function shimToast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
+function flushed() {
+  if (waiting() > 0) return;
+  savePending();
+  if (ST.hadWaiting) { ST.hadWaiting = false; shimToast("✓ Saisies hors ligne envoyées au serveur"); }
+  if (ST.state !== "error") setState(navigator.onLine === false ? "offline" : "ok");
+}
+function track(p) {
+  pending++; ST.hadWaiting = true; savePending(); setPill();
+  p.then(() => {}, (e) => { const x = explain(e); setState("error", x); shimToast("⚠ " + x); })
+    .finally(() => { pending = Math.max(0, pending - 1); savePending(); setPill(); flushed(); window.__rerender && window.__rerender(); });
+}
+// Lance l'écriture et rend la main immédiatement (la saisie est déjà enregistrée sur le téléphone).
+function write(fn) {
+  let p;
+  try { p = fn(); } catch (e) { return Promise.reject(wrapErr(e)); } // données invalides : erreur immédiate
+  track(p);
+  return Promise.resolve();
+}
+function wrapErr(e) { const x = new Error(explain(e)); x.code = e && e.code; x.wh = explain(e); return x; }
+
 function setPill() {
   const m = document.getElementById("mode"); if (!m) return;
-  const t = { ok: ["● Synchronisé", "mode live"], sending: ["◐ Envoi…", "mode local"], offline: ["◐ Hors ligne", "mode local"], error: ["⚠ Pas synchronisé", "mode local"], init: ["Connexion…", "mode"] }[ST.state];
+  const n = waiting();
+  let state = ST.state;
+  if (n > 0 && state === "ok") state = "sending";
+  const t = { ok: ["● Synchronisé", "mode live"], sending: [n ? `◐ Envoi de ${n}…` : "◐ Envoi…", "mode local"], offline: [n ? `◐ Hors ligne · ${n} en attente` : "◐ Hors ligne", "mode local"], error: ["⚠ Pas synchronisé", "mode local"], init: ["Connexion…", "mode"] }[state];
   m.textContent = t[0]; m.className = t[1]; if (ST.state === "error") { m.style.background = "#FBE7E4"; m.style.color = "#B42318"; } else { m.style.background = ""; m.style.color = ""; }
   m.onclick = () => { const b = document.querySelector('.tabs [data-tab="carte"]'); b && b.click(); setTimeout(() => document.getElementById("wh-diag")?.scrollIntoView({ behavior: "smooth" }), 300); };
 }
@@ -127,10 +162,17 @@ function watchStatus() {
   }, e => setState("error", explain(e)));
   const beat = () => currentUser && setDoc(doc(fs, "diag", currentUser.uid), { name: (localStorage.getItem("wh-name") || ""), email: currentUser.email || "", lastSeen: Date.now(), device: navigator.userAgent.slice(0, 120) }, { merge: true }).catch(e => setState("error", explain(e)));
   beat(); setInterval(beat, 5 * 60 * 1000);
-  setInterval(setPill, 3000);
-  window.addEventListener("offline", () => setState("offline")); window.addEventListener("online", () => ST.state === "offline" && setState("sending"));
+  setInterval(setPill, 3000); setInterval(retryImages, 30000);
+  window.addEventListener("offline", () => setState("offline"));
+  window.addEventListener("online", () => { if (ST.state === "offline" || ST.state === "error") setState(waiting() ? "sending" : "init"); retryImages(); });
+  // saisies faites hors ligne lors d'une utilisation précédente : Firebase les renvoie seul, on suit la fin de l'envoi
+  if (oldPending > 0) {
+    ST.hadWaiting = true; setPill();
+    waitForPendingWrites(fs).then(() => { oldPending = 0; savePending(); setPill(); flushed(); window.__rerender && window.__rerender(); }).catch(() => {});
+  }
 }
-function guard(p) { return p.catch(e => { setState("error", explain(e)); const x = new Error(explain(e)); x.code = e && e.code; x.wh = explain(e); throw x; }); }
+const isOffline = e => { const c = (e && e.code) || ""; return c === "unavailable" || /offline|network/i.test(String((e && e.message) || "")); };
+function guard(p) { return p.catch(e => { if (isOffline(e)) setState("offline"); else setState("error", explain(e)); throw wrapErr(e); }); }
 
 /* ---------------- adaptateur base de données ---------------- */
 const segs = p => p.split("/");
@@ -143,10 +185,11 @@ function docApi(path) {
   return {
     id: ref.id, path,
     get: async () => wrapDocSnap(await guard(getDoc(ref))),
-    // fusion profonde : ne jamais écraser les saisies faites par un autre téléphone
-    set: (data) => guard(setDoc(ref, data, { merge: true })),
-    update: (data) => guard(setDoc(ref, data, { merge: true })),
-    delete: () => guard(deleteDoc(ref)),
+    // fusion profonde : ne jamais écraser les saisies faites par un autre téléphone.
+    // Écriture locale immédiate, envoi au serveur en arrière-plan (fonctionne hors ligne).
+    set: (data) => write(() => setDoc(ref, data, { merge: true })),
+    update: (data) => write(() => setDoc(ref, data, { merge: true })),
+    delete: () => write(() => deleteDoc(ref)),
     acquire: async () => ({ acquired: true }),
     onSnapshot: (next, error) => onSnapshot(ref, { includeMetadataChanges: false }, s => next(wrapDocSnap(s)), e => { setState("error", explain(e)); error && error({ code: "unavailable", message: explain(e), wh: explain(e) }); }),
     collection: (sub) => colApi(path + "/" + sub),
@@ -184,21 +227,28 @@ const assetsApi = {
     const data = await recompress(blob);
     const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     photoCache[id] = data;
-    await setDoc(doc(fs, "photos", id), { data, at: new Date().toISOString(), by: currentUser?.uid || null });
+    // photo gardée sur le téléphone tout de suite, envoyée au serveur dès que possible
+    await write(() => setDoc(doc(fs, "photos", id), { data, at: new Date().toISOString(), by: currentUser?.uid || null }));
     return { id, url: data, sizeBytes: data.length, contentType: "image/jpeg" };
   },
   list: async () => ({ assets: [], usage: {} }),
-  delete: async (id) => deleteDoc(doc(fs, "photos", id)),
+  delete: async (id) => write(() => deleteDoc(doc(fs, "photos", id))),
 };
+const waitingImgs = new Set();
+async function loadInto(img, id) {
+  if (!photoCache[id]) {
+    try { const s = await getDoc(doc(fs, "photos", id)); if (s.exists()) photoCache[id] = s.data().data; } catch (e) {}
+  }
+  if (photoCache[id]) { img.src = photoCache[id]; waitingImgs.delete(img); }
+  else waitingImgs.add(img); // pas encore disponible (hors ligne) : on réessaiera au retour d'internet
+}
+function retryImages() { waitingImgs.forEach(img => { if (!img.isConnected) waitingImgs.delete(img); else loadInto(img, img.dataset.whBlob); }); }
 async function hydrate(img) {
   const src = img.getAttribute("src") || "";
   const m = src.match(/\/_blob\/([A-Za-z0-9_-]+)/); if (!m) return;
   const id = m[1];
-  img.removeAttribute("src"); img.style.background = "#E9EBE6";
-  if (!photoCache[id]) {
-    try { const s = await getDoc(doc(fs, "photos", id)); photoCache[id] = s.exists() ? s.data().data : ""; } catch (e) { photoCache[id] = ""; }
-  }
-  if (photoCache[id]) img.src = photoCache[id];
+  img.removeAttribute("src"); img.style.background = "#E9EBE6"; img.dataset.whBlob = id;
+  loadInto(img, id);
 }
 function watchImages() {
   const scan = root => root.querySelectorAll && root.querySelectorAll('img[src*="/_blob/"]').forEach(hydrate);
@@ -304,10 +354,11 @@ window.__extraCarte = () => {
   if (diagList === null) { diagList = []; loadDiag(); }
   const imp = hasData === false ? `<button class="btn primary" style="width:100%;margin-top:10px" data-wh="import">📥 Importer le cahier du 26/08 au 25/09/2026</button>` : "";
   const col = ST.state === "ok" ? "#1F7A4D" : ST.state === "error" ? "#B42318" : "#9A6400";
-  const lbl = { ok: "✓ Synchronisé avec le serveur", sending: "Envoi en cours…", offline: "Hors ligne : les saisies partiront au retour d'internet", error: "Pas synchronisé", init: "Connexion au serveur…" }[ST.state];
+  const lbl = { ok: "✓ Synchronisé avec le serveur", sending: "Envoi en cours…", offline: "Hors ligne : tout est enregistré sur ce téléphone et partira au retour d'internet", error: "Pas synchronisé", init: "Connexion au serveur…" }[ST.state];
   const people = (diagList || []).map(d => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;padding:4px 0"><span>👤 <b>${esc2(d.name || d.email || "?")}</b> <span style="color:#5E6862">${esc2(d.email || "")}</span></span><span style="color:#5E6862;white-space:nowrap">${ago(d.lastSeen)}</span></div>`).join("");
   return `<h2 class="sec" id="wh-diag">Synchronisation</h2><div class="list" style="padding:12px 14px">
     <div style="font-weight:800;color:${col}">${lbl}</div>
+    ${waiting() ? `<div style="font-size:13.5px;color:#9A6400;margin-top:6px">${waiting()} saisie(s) en attente d'envoi — elles sont gardées sur ce téléphone, même s'il est éteint.</div>` : ""}
     ${ST.msg ? `<div style="font-size:13.5px;color:#B42318;margin-top:6px">${esc2(ST.msg)}</div>` : ""}
     <div style="font-size:13px;color:#5E6862;margin-top:6px">Dernier contact avec le serveur : ${ago(ST.lastServer)}${ST.size != null ? " · " + ST.size + " jours enregistrés" : ""}</div>
     <div style="font-size:12px;font-weight:800;color:#5E6862;text-transform:uppercase;letter-spacing:.08em;margin-top:12px">Téléphones reliés à la même caisse</div>
@@ -361,7 +412,7 @@ if (!cfg || !cfg.apiKey) {
 } else {
   app = initializeApp(cfg);
   auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
-  fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager(), cacheSizeBytes: 200 * 1024 * 1024 }) });
   onAuthStateChanged(auth, async (u) => {
     currentUser = u;
     if (u) {
