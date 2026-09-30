@@ -76,6 +76,18 @@ public class AppSharePlugin extends Plugin {
         call.resolve(r);
     }
 
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(call.getString("url", "")));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Impossible d'ouvrir le lien : " + e.getMessage());
+        }
+    }
+
     private void launch(Intent i, PluginCall call, String title) {
         boolean whatsapp = Boolean.TRUE.equals(call.getBoolean("whatsapp", true));
         if (whatsapp) {

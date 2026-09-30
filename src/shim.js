@@ -8,7 +8,7 @@ import {
 } from "firebase/auth";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites,
-  doc, collection, getDoc, getDocs, getDocFromServer, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
+  doc, collection, getDoc, getDocs, getDocFromServer, getDocsFromServer, disableNetwork, enableNetwork, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
 } from "firebase/firestore";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -298,6 +298,49 @@ window.__whApp = {
     window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
   },
   version: () => (Capacitor.isNativePlatform() ? AppShare.getVersion().catch(() => null) : Promise.resolve(null)),
+};
+
+/* ---------------- tirer vers le bas : actualiser + vérifier la mise à jour ---------------- */
+const REPO_API = "https://api.github.com/repos/deograciasclinique-sketch/won-house-caisse/releases/latest";
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, ko) => setTimeout(() => ko({ code: "unavailable", message: "délai dépassé" }), ms))]);
+async function checkUpdate() {
+  if (!Capacitor.isNativePlatform() || navigator.onLine === false) return null;
+  try {
+    const cur = await AppShare.getVersion();
+    const r = await withTimeout(fetch(REPO_API, { cache: "no-store" }), 10000);
+    if (!r.ok) return null;
+    const rel = await r.json();
+    const latest = Number(String(rel.tag_name || "").split(".").pop()) || 0;
+    const mine = Number(cur && cur.build) || 0;
+    const asset = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
+    if (latest > mine && asset) return { version: rel.tag_name, url: asset.browser_download_url };
+  } catch (e) {}
+  return null;
+}
+window.__whCheckUpdate = checkUpdate;
+window.__whOpenUrl = (url) => (Capacitor.isNativePlatform() ? AppShare.openUrl({ url }) : Promise.resolve(window.open(url, "_blank")));
+window.__whRefresh = async () => {
+  if (!fs || !currentUser) return { ok: false, msg: "Connectez-vous d'abord." };
+  if (navigator.onLine === false) { setState("offline"); return { ok: false, offline: true, msg: waiting() ? `Hors ligne : ${waiting()} saisie(s) gardée(s) sur ce téléphone, envoi au retour d'internet.` : "Hors ligne : pas de mise à jour possible pour l'instant." }; }
+  try {
+    // relance la connexion au serveur (débloque une connexion figée)
+    await disableNetwork(fs); await enableNetwork(fs);
+    setState(waiting() ? "sending" : "init");
+    // 1) envoyer ce qui attend sur ce téléphone
+    await withTimeout(waitForPendingWrites(fs), 15000).catch(() => {});
+    // 2) recevoir les dernières données des autres téléphones
+    const s = await withTimeout(getDocsFromServer(collection(fs, "jours")), 15000);
+    await withTimeout(getDocFromServer(doc(fs, "config", "tarifs")), 10000).catch(() => {});
+    ST.lastServer = Date.now(); ST.size = s.size; hasData = s.size > 0;
+    oldPending = 0; if (!pending) savePending();
+    setState(waiting() ? "sending" : "ok");
+    retryImages(); loadDiag();
+    const update = await checkUpdate();
+    return { ok: true, msg: waiting() ? `Données à jour · ${waiting()} saisie(s) encore en envoi` : "✓ Données à jour", update };
+  } catch (e) {
+    if (isOffline(e)) { setState("offline"); return { ok: false, offline: true, msg: "Serveur injoignable : vérifiez internet. Vos saisies restent gardées sur ce téléphone." }; }
+    setState("error", explain(e)); return { ok: false, msg: explain(e) };
+  }
 };
 
 /* ---------------- caméra en direct ---------------- */

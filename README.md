@@ -15,6 +15,11 @@ ou « Envoyer le lien de téléchargement ».
 Toutes les versions sont signées avec la même clé (`android/app/wonhouse.keystore`) :
 une nouvelle version s'installe par-dessus l'ancienne sans perdre les données.
 
+## Actualiser (tirer vers le bas)
+En haut de l'écran, tirer vers le bas puis relâcher : l'application relance la connexion,
+envoie les saisies en attente, reçoit les dernières données des autres téléphones, et vérifie
+s'il existe une nouvelle version (bandeau « Mettre à jour » → télécharge et installe l'APK par-dessus).
+
 ## Hors connexion
 L'application fonctionne sans internet (après une première connexion au compte).
 Chaque saisie (vente, achat, caisse, photo, carte) est enregistrée tout de suite sur le téléphone ;
