@@ -7,8 +7,9 @@ android {
         applicationId "com.wonhouse.caisse"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // numéro de version = numéro de construction GitHub (-Pvc=…), pour que chaque APK remplace le précédent
+        versionCode((project.findProperty("vc") ?: "1").toString().toInteger())
+        versionName "1." + (project.findProperty("vc") ?: "0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +17,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // clé de signature fixe : toutes les versions ont la même signature et s'installent par-dessus l'ancienne
+    signingConfigs {
+        wonhouse {
+            storeFile file("wonhouse.keystore")
+            storePassword "wonhouse2026"
+            keyAlias "wonhouse"
+            keyPassword "wonhouse2026"
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.wonhouse
+        }
         release {
+            signingConfig signingConfigs.wonhouse
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

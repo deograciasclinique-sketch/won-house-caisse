@@ -8,6 +8,13 @@ photos datées prises avec la caméra, et synchronisation entre tous les télép
 Onglet **Releases** du dépôt → dernière version → **WON-HOUSE-caisse.apk**.
 Sur le téléphone : ouvrir le fichier, autoriser « installer des applications inconnues », puis Installer.
 
+## Menu et partage
+Le bouton ☰ en haut à droite ouvre le menu : sections, synchronisation, et
+« Envoyer l'application par WhatsApp » (envoie le fichier d'installation, même sans internet)
+ou « Envoyer le lien de téléchargement ».
+Toutes les versions sont signées avec la même clé (`android/app/wonhouse.keystore`) :
+une nouvelle version s'installe par-dessus l'ancienne sans perdre les données.
+
 ## Hors connexion
 L'application fonctionne sans internet (après une première connexion au compte).
 Chaque saisie (vente, achat, caisse, photo, carte) est enregistrée tout de suite sur le téléphone ;

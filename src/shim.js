@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { registerPlugin, Capacitor } from "@capacitor/core";
 import SEED from "./seed.json";
 
 const cfg = window.FIREBASE_CONFIG;
@@ -279,6 +280,24 @@ const downloadsApi = {
     await Share.share({ title: filename, files: [r.uri], dialogTitle: "Envoyer le fichier" });
     return { status: "delivered" };
   },
+};
+
+/* ---------------- envoyer l'application (WhatsApp) ---------------- */
+const AppShare = registerPlugin("AppShare");
+const APK_LINK = "https://github.com/deograciasclinique-sketch/won-house-caisse/releases/latest/download/WON-HOUSE-caisse.apk";
+const HOWTO = "Pour installer : ouvrir le fichier, autoriser « installer des applications inconnues », puis Installer.";
+window.__whApp = {
+  native: Capacitor.isNativePlatform(),
+  link: APK_LINK,
+  // envoie le fichier APK de l'application installée (marche sans internet sur ce téléphone)
+  shareApk: () => AppShare.shareApk({ text: "📲 Application WON HOUSE — caisse du restaurant.\n" + HOWTO }),
+  // envoie un message avec le lien de téléchargement de la dernière version
+  shareLink: () => {
+    const text = "📲 Application WON HOUSE — caisse du restaurant.\nTélécharger : " + APK_LINK + "\n" + HOWTO;
+    if (Capacitor.isNativePlatform()) return AppShare.shareText({ text });
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
+  },
+  version: () => (Capacitor.isNativePlatform() ? AppShare.getVersion().catch(() => null) : Promise.resolve(null)),
 };
 
 /* ---------------- caméra en direct ---------------- */
