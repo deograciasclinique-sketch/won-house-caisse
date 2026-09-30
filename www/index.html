@@ -439,7 +439,7 @@ function banner(){
 }
 function renderJour(){
   const day=getDay(S.date), t=dayTotals(day);
-  const ventes=[...(day.ventes||[])].sort((a,b)=>(heureVente(a)||"99").localeCompare(heureVente(b)||"99")||(a.t||0)-(b.t||0)), achats=day.achats||[];
+  const ventes=[...(day.ventes||[])].sort((a,b)=>(heureVente(a)||"99").localeCompare(heureVente(b)||"99")||(a.t||0)-(b.t||0)), achats=[...(day.achats||[])].sort((a,b)=>(heureVente(a)||"99").localeCompare(heureVente(b)||"99")||(a.t||0)-(b.t||0));
   const nbv=ventes.reduce((s,x)=>s+(Number(x.qte)||0),0);
   let caisseHtml="";
   const ec = (day.caisse===null||day.caisse===undefined||day.caisse==="")?null:Number(day.caisse)-t.r;
@@ -477,7 +477,7 @@ function renderJour(){
   <h2 class="sec">Achats et dépenses <span class="num">${achats.length} ligne${achats.length>1?"s":""}</span></h2>
   <div class="list">${achats.length?achats.map(x=>`<button class="row" data-edit-a="${esc(x.id)}">
       <span class="av" style="background:${catCol(x.cat)}26">${ico(x.article)||"🛒"}</span>
-      <span class="main"><span class="t">${esc(x.article)}</span><span class="s ${x.note||x.montant==null?"w":""}" style="display:block"><i class="catdot" style="background:${catCol(x.cat)}"></i>${esc(x.cat||"")}${x.detail?" · "+esc(x.detail):""}${x.montant==null?" · montant non noté":""}${who(x)}${x.note?" · "+esc(x.note):""}</span></span>
+      <span class="main"><span class="t">${esc(x.article)}</span><span class="s ${x.note||x.montant==null?"w":""}" style="display:block">${heureVente(x)?`<b class="hv">🕒 ${hFr(heureVente(x))}</b> · `:""}<i class="catdot" style="background:${catCol(x.cat)}"></i>${esc(x.cat||"")}${x.detail?" · "+esc(x.detail):""}${x.montant==null?" · montant non noté":""}${who(x)}${x.note?" · "+esc(x.note):""}</span></span>
       ${x.photo?`<img class="thumb" src="${photoURL(x.photo)}" alt="Photo" data-view="${esc(x.photo)}" data-cap="${esc(x.article+(x.montant!=null?" · "+F(x.montant):"")+(x.photoAt?" · photo prise le "+fmtDT(x.photoAt):""))}">`:""}
       <span class="amt num">${x.montant==null?"—":F(x.montant)}</span></button>`).join(""):`<div class="empty">Aucun achat noté ce jour.</div>`}</div>
   ${galleryHtml(ventes,achats)}
@@ -631,7 +631,7 @@ function showUpdate(u){
 // vérification automatique au démarrage (si internet)
 setTimeout(()=>{window.__whCheckUpdate&&window.__whCheckUpdate().then(u=>u&&showUpdate(u)).catch(()=>{});},4000);
 
-// Heure d'enregistrement d'une vente ("14:32") : champ "heure", sinon l'instant de l'enregistrement (t).
+// Heure d'enregistrement d'une vente ou d'un achat ("14:32") : champ "heure", sinon l'instant de l'enregistrement (t).
 // Les lignes importées du cahier (id v123 / a123) n'ont pas d'heure réelle.
 function hhmm(ts){const d=new Date(ts);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
 function heureVente(x){if(x.heure)return x.heure;if(x.t&&!/^[va]\d+$/.test(x.id||""))return hhmm(x.t);return "";}
@@ -733,7 +733,7 @@ function venteSheet(existing,preset){
 }
 function achatSheet(existing,preset){
   const cats=[...new Set([...(S.tarifs.categories||[]),...DEFAULT_TARIFS.categories])].sort((a,b)=>(a==="Divers")-(b==="Divers"));
-  const st={article:existing?.article||"",cat:existing?.cat||"",detail:existing?.detail||"",montant:existing?.montant??"",note:existing?.note||"",photo:existing?.photo||preset?.id||null,photoAt:existing?.photoAt||preset?.at||null};
+  const st={heure:existing?heureVente(existing):hhmm(Date.now()),article:existing?.article||"",cat:existing?.cat||"",detail:existing?.detail||"",montant:existing?.montant??"",note:existing?.note||"",photo:existing?.photo||preset?.id||null,photoAt:existing?.photoAt||preset?.at||null};
   openSheet(`<h3>${existing?"Modifier l'achat":"Nouvel achat"}</h3>
     ${photoField(st.photo,st.photoAt)}
     <div class="chips">${QUICK_ACHATS.map(([n,c])=>`<button class="chip" data-a="${esc(n)}" data-c="${esc(c)}" aria-pressed="${n===st.article}"><span class="em">${ico(n)||"🛒"}</span>${esc(n)}</button>`).join("")}</div>
@@ -741,9 +741,11 @@ function achatSheet(existing,preset){
     <div class="field"><label for="mt">Montant payé (F)</label><input id="mt" inputmode="numeric" class="num" value="${st.montant??""}" placeholder="Obligatoire"></div>
     <div class="field"><label for="ct">Catégorie</label><select id="ct"><option value="">— Choisir —</option>${cats.map(c=>`<option ${c===st.cat?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
     <div class="field"><label for="dt">Quantité / détail</label><input id="dt" value="${esc(st.detail)}" placeholder="ex. 2 kg, 1 plaquette"></div>
+    <div class="field"><label for="ha">Heure de l'achat</label><input id="ha" type="time" class="num" value="${esc(st.heure)}"></div>
     <div class="field"><label for="nt">Remarque</label><input id="nt" value="${esc(st.note)}" placeholder="Facultatif"></div>
     <div class="sheet-actions">${existing?`<button class="btn ghost danger" data-del>Supprimer</button>`:`<button class="btn ghost" data-cancel>Annuler</button>`}<button class="btn primary" data-ok>Enregistrer</button></div>`,
   sh=>{
+    sh.querySelector("#ha").addEventListener("input",e=>{st.heure=e.target.value;});
     sh.querySelectorAll("[data-a]").forEach(b=>b.addEventListener("click",()=>{st.article=b.dataset.a;st.cat=b.dataset.c;sh.querySelector("#ar").value=st.article;sh.querySelector("#ct").value=st.cat;sh.querySelectorAll("[data-a]").forEach(x=>x.setAttribute("aria-pressed",x===b));sh.querySelector("#mt").focus();}));
     sh.querySelector("#ar").addEventListener("input",e=>st.article=e.target.value);
     sh.querySelector("#mt").addEventListener("input",e=>st.montant=e.target.value);
@@ -756,7 +758,7 @@ function achatSheet(existing,preset){
     sh.querySelector("[data-ok]").addEventListener("click",()=>{
       const m=parseInt(String(st.montant).replace(/\s/g,""));
       if(!st.article.trim()){toast("Indiquez l'article acheté.");return;} if(!(m>=0)){toast("Indiquez le montant payé.");return;}
-      const item={id:existing?.id||uid(),t:existing?.t,by:existing?.by,article:st.article.trim(),cat:st.cat||"Divers",montant:m,detail:st.detail||null,note:st.note||null,photo:st.photo||null,photoAt:st.photo?(st.photoAt||null):null};
+      const item={id:existing?.id||uid(),t:existing?.t,by:existing?.by,heure:st.heure||hhmm(Date.now()),article:st.article.trim(),cat:st.cat||"Divers",montant:m,detail:st.detail||null,note:st.note||null,photo:st.photo||null,photoAt:st.photo?(st.photoAt||null):null};
       closeSheet(); saveItem(S.date,"achats",item); toast(existing?"Achat modifié":"🛒 Achat enregistré : "+F(m));
     });
   });
@@ -767,7 +769,7 @@ async function exportMonth(){
   const {start,end}=S.period; const rows=[["Date","Heure","Type","Article / Produit","Catégorie","Quantité","Prix unitaire","Montant","Remarque","Photo prise le"]];
   Object.keys(S.days).filter(d=>d>=start&&d<=end).sort().forEach(d=>{const day=S.days[d];const fd=parseISO(d).toLocaleDateString("fr-FR");
     (day.ventes||[]).forEach(x=>rows.push([fd,heureVente(x),"Vente",x.produit,"",x.qte,x.prix,(x.qte||0)*(x.prix||0),x.note||"",x.photoAt?fmtDT(x.photoAt):""]));
-    (day.achats||[]).forEach(x=>rows.push([fd,"","Achat",x.article,x.cat||"",x.detail||"","",x.montant??"",x.note||"",x.photoAt?fmtDT(x.photoAt):""]));});
+    (day.achats||[]).forEach(x=>rows.push([fd,heureVente(x),"Achat",x.article,x.cat||"",x.detail||"","",x.montant??"",x.note||"",x.photoAt?fmtDT(x.photoAt):""]));});
   const csv="﻿"+rows.map(r=>r.map(c=>{c=String(c??"");return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c;}).join(";")).join("\r\n");
   try{await downloads.save({filename:`WON_HOUSE_${start}_au_${end}.csv`,data:new Blob([csv],{type:"text/csv"})});toast("Fichier prêt");}
   catch(e){if(e?.code!=="declined")toast("Export impossible pour le moment.");}
