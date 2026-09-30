@@ -156,6 +156,7 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
 .chip small{display:block;font-weight:600;color:var(--muted);font-size:12px}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .chip[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.hv{color:var(--ink);font-weight:800}
 .field{display:flex;flex-direction:column;gap:5px;margin-top:14px}
 .field label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .field input,.field select{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;font-size:16px;width:100%}
@@ -438,7 +439,7 @@ function banner(){
 }
 function renderJour(){
   const day=getDay(S.date), t=dayTotals(day);
-  const ventes=day.ventes||[], achats=day.achats||[];
+  const ventes=[...(day.ventes||[])].sort((a,b)=>(heureVente(a)||"99").localeCompare(heureVente(b)||"99")||(a.t||0)-(b.t||0)), achats=day.achats||[];
   const nbv=ventes.reduce((s,x)=>s+(Number(x.qte)||0),0);
   let caisseHtml="";
   const ec = (day.caisse===null||day.caisse===undefined||day.caisse==="")?null:Number(day.caisse)-t.r;
@@ -470,7 +471,7 @@ function renderJour(){
   <h2 class="sec">Ventes <span class="num">${nbv} article${nbv>1?"s":""}</span></h2>
   <div class="list">${ventes.length?ventes.map(x=>`<button class="row" data-edit-v="${esc(x.id)}">
       <span class="av" style="background:${PROD_COL[prodIndex(x.produit)]}22">${ico(x.produit)||"🍽️"}<b class="num">${Number(x.qte)||0}</b></span>
-      <span class="main"><span class="t">${esc(x.produit)}</span><span class="s ${x.note?"w":""}" style="display:block">${F(x.prix)} l'unité${who(x)}${x.note?" · "+esc(x.note):""}</span></span>
+      <span class="main"><span class="t">${esc(x.produit)}</span><span class="s ${x.note?"w":""}" style="display:block">${heureVente(x)?`<b class="hv">🕒 ${hFr(heureVente(x))}</b> · `:""}${F(x.prix)} l'unité${who(x)}${x.note?" · "+esc(x.note):""}</span></span>
       ${x.photo?`<img class="thumb" src="${photoURL(x.photo)}" alt="Photo" data-view="${esc(x.photo)}" data-cap="${esc(x.qte+" × "+x.produit+(x.photoAt?" · photo prise le "+fmtDT(x.photoAt):""))}">`:""}
       <span class="amt num">${F((Number(x.qte)||0)*(Number(x.prix)||0))}</span></button>`).join(""):`<div class="empty">Aucune vente notée ce jour.</div>`}</div>
   <h2 class="sec">Achats et dépenses <span class="num">${achats.length} ligne${achats.length>1?"s":""}</span></h2>
@@ -630,6 +631,11 @@ function showUpdate(u){
 // vérification automatique au démarrage (si internet)
 setTimeout(()=>{window.__whCheckUpdate&&window.__whCheckUpdate().then(u=>u&&showUpdate(u)).catch(()=>{});},4000);
 
+// Heure d'enregistrement d'une vente ("14:32") : champ "heure", sinon l'instant de l'enregistrement (t).
+// Les lignes importées du cahier (id v123 / a123) n'ont pas d'heure réelle.
+function hhmm(ts){const d=new Date(ts);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+function heureVente(x){if(x.heure)return x.heure;if(x.t&&!/^[va]\d+$/.test(x.id||""))return hhmm(x.t);return "";}
+const hFr=h=>h?h.replace(":","h"):"";
 function fmtDT(ts){const d=new Date(ts);return d.toLocaleDateString("fr-FR")+" à "+String(d.getHours()).padStart(2,"0")+"h"+String(d.getMinutes()).padStart(2,"0");}
 function photoList(day,date){
   const out=[];
@@ -697,17 +703,19 @@ function bindPhoto(sh,st,kind){
 
 function venteSheet(existing,preset){
   const prods=S.tarifs.produits||[];
-  const st={produit:existing?.produit||prods[0]?.nom||"",prix:existing?.prix??prods[0]?.prix??0,qte:existing?.qte||1,note:existing?.note||"",photo:existing?.photo||preset?.id||null,photoAt:existing?.photoAt||preset?.at||null};
+  const st={produit:existing?.produit||prods[0]?.nom||"",prix:existing?.prix??prods[0]?.prix??0,qte:existing?.qte||1,note:existing?.note||"",photo:existing?.photo||preset?.id||null,photoAt:existing?.photoAt||preset?.at||null,heure:existing?heureVente(existing):hhmm(Date.now())};
   const draw=()=>{const tl=sheetEl.querySelector("#tl");if(tl)tl.textContent=F(st.qte*st.prix);};
   openSheet(`<h3>${existing?"Modifier la vente":"Nouvelle vente"}</h3>
     ${photoField(st.photo,st.photoAt)}
     <div class="chips" id="pchips">${prods.map(p=>`<button class="chip" data-p="${esc(p.nom)}" data-pr="${p.prix}" aria-pressed="${p.nom===st.produit}"><span class="em">${ico(p.nom)||"🍽️"}</span>${esc(p.nom)}<small class="num">${F(p.prix)}</small></button>`).join("")}</div>
     <div class="field"><label for="q">Quantité</label><div class="stepper"><button type="button" data-q="-1" aria-label="Moins">−</button><input id="q" class="num" inputmode="numeric" value="${st.qte}"><button type="button" data-q="1" aria-label="Plus">+</button></div></div>
     <div class="field"><label for="pu">Prix unitaire (F)</label><input id="pu" inputmode="numeric" class="num" value="${st.prix}"></div>
+    <div class="field"><label for="hv">Heure de la vente</label><input id="hv" type="time" class="num" value="${esc(st.heure)}"></div>
     <div class="field"><label for="nt">Remarque</label><input id="nt" value="${esc(st.note)}" placeholder="Facultatif"></div>
     <div class="total-line"><span>Total</span><b class="num" id="tl">${F(st.qte*st.prix)}</b></div>
     <div class="sheet-actions">${existing?`<button class="btn ghost danger" data-del>Supprimer</button>`:`<button class="btn ghost" data-cancel>Annuler</button>`}<button class="btn primary" data-ok>Enregistrer</button></div>`,
   sh=>{
+    sh.querySelector("#hv").addEventListener("input",e=>{st.heure=e.target.value;});
     sh.querySelectorAll("[data-p]").forEach(b=>b.addEventListener("click",()=>{st.produit=b.dataset.p;st.prix=Number(b.dataset.pr);sh.querySelectorAll("[data-p]").forEach(x=>x.setAttribute("aria-pressed",x===b));sh.querySelector("#pu").value=st.prix;draw();}));
     sh.querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{st.qte=Math.max(1,(Number(st.qte)||0)+Number(b.dataset.q));sh.querySelector("#q").value=st.qte;draw();}));
     sh.querySelector("#q").addEventListener("input",e=>{st.qte=Math.max(0,parseInt(e.target.value)||0);draw();});
@@ -718,7 +726,7 @@ function venteSheet(existing,preset){
     sh.querySelector("[data-del]")?.addEventListener("click",e=>{if(e.target.dataset.sure){closeSheet();removeItem(S.date,"ventes",existing.id);toast("Vente supprimée");}else{e.target.dataset.sure="1";e.target.textContent="Confirmer ?";}});
     sh.querySelector("[data-ok]").addEventListener("click",()=>{
       if(!st.produit){toast("Choisissez un produit.");return;} if(!(st.qte>0)){toast("Indiquez une quantité.");return;}
-      const item={id:existing?.id||uid(),t:existing?.t,by:existing?.by,produit:st.produit,qte:st.qte,prix:st.prix,note:st.note||null,photo:st.photo||null,photoAt:st.photo?(st.photoAt||null):null};
+      const item={id:existing?.id||uid(),t:existing?.t,by:existing?.by,produit:st.produit,qte:st.qte,prix:st.prix,heure:st.heure||hhmm(Date.now()),note:st.note||null,photo:st.photo||null,photoAt:st.photo?(st.photoAt||null):null};
       closeSheet(); saveItem(S.date,"ventes",item); if(existing)toast("Vente modifiée");else celebrate("+ "+F(item.qte*item.prix));
     });
   });
@@ -756,10 +764,10 @@ function achatSheet(existing,preset){
 
 /* ---------- export ---------- */
 async function exportMonth(){
-  const {start,end}=S.period; const rows=[["Date","Type","Article / Produit","Catégorie","Quantité","Prix unitaire","Montant","Remarque","Photo prise le"]];
+  const {start,end}=S.period; const rows=[["Date","Heure","Type","Article / Produit","Catégorie","Quantité","Prix unitaire","Montant","Remarque","Photo prise le"]];
   Object.keys(S.days).filter(d=>d>=start&&d<=end).sort().forEach(d=>{const day=S.days[d];const fd=parseISO(d).toLocaleDateString("fr-FR");
-    (day.ventes||[]).forEach(x=>rows.push([fd,"Vente",x.produit,"",x.qte,x.prix,(x.qte||0)*(x.prix||0),x.note||"",x.photoAt?fmtDT(x.photoAt):""]));
-    (day.achats||[]).forEach(x=>rows.push([fd,"Achat",x.article,x.cat||"",x.detail||"","",x.montant??"",x.note||"",x.photoAt?fmtDT(x.photoAt):""]));});
+    (day.ventes||[]).forEach(x=>rows.push([fd,heureVente(x),"Vente",x.produit,"",x.qte,x.prix,(x.qte||0)*(x.prix||0),x.note||"",x.photoAt?fmtDT(x.photoAt):""]));
+    (day.achats||[]).forEach(x=>rows.push([fd,"","Achat",x.article,x.cat||"",x.detail||"","",x.montant??"",x.note||"",x.photoAt?fmtDT(x.photoAt):""]));});
   const csv="﻿"+rows.map(r=>r.map(c=>{c=String(c??"");return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c;}).join(";")).join("\r\n");
   try{await downloads.save({filename:`WON_HOUSE_${start}_au_${end}.csv`,data:new Blob([csv],{type:"text/csv"})});toast("Fichier prêt");}
   catch(e){if(e?.code!=="declined")toast("Export impossible pour le moment.");}
