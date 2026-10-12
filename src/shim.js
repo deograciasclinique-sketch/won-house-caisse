@@ -9,7 +9,9 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites,
   doc, collection, getDoc, getDocs, getDocFromServer, getDocsFromServer, disableNetwork, enableNetwork, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
+  orderBy,
 } from "firebase/firestore";
+import QRCode from "qrcode";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { registerPlugin, Capacitor } from "@capacitor/core";
@@ -298,6 +300,36 @@ window.__whApp = {
     window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
   },
   version: () => (Capacitor.isNativePlatform() ? AppShare.getVersion().catch(() => null) : Promise.resolve(null)),
+};
+
+/* ---------------- commandes des clients + menu public ----------------
+   « public/menu » : ce que voient les clients (plats, prix, plats épuisés, commandes ouvertes).
+   « commandes » : créées par les clients depuis la page client, suivies ici par l'équipe. */
+const CLIENT_URL = "https://deograciasclinique-sketch.github.io/won-house-caisse/";
+window.__whOrders = {
+  url: CLIENT_URL,
+  // dernières commandes, mises à jour en direct
+  watch: (next) => {
+    if (!fs || !currentUser) return () => {};
+    const q = query(collection(fs, "commandes"), orderBy("at", "desc"), limit(80));
+    return onSnapshot(q, s => {
+      const list = s.docs.map(d => { const o = d.data({ serverTimestamps: "estimate" }); return { id: d.id, ...o, at: o.at && o.at.toMillis ? o.at.toMillis() : Date.now() }; });
+      const added = s.docChanges().filter(c => c.type === "added" && !c.doc.metadata.hasPendingWrites).map(c => c.doc.id);
+      next(list, added, s.metadata.fromCache);
+    }, e => { setState("error", explain(e)); next(null, [], true, explain(e)); });
+  },
+  setStatut: (id, statut, extra) => write(() => setDoc(doc(fs, "commandes", id), { statut, ...(extra || {}), majAt: Date.now(), majBy: currentUser?.uid || null }, { merge: true })),
+  // « null » seulement si le serveur confirme que le menu n'existe pas encore (jamais d'après le seul cache hors ligne).
+  watchMenu: (next) => (fs && currentUser ? onSnapshot(doc(fs, "public", "menu"), { includeMetadataChanges: true }, s => {
+    if (!s.exists() && s.metadata.fromCache) return;
+    next(s.exists() ? s.data() : null);
+  }, () => next(undefined)) : () => {}),
+  publishMenu: (menu) => write(() => setDoc(doc(fs, "public", "menu"), { ...menu, majAt: Date.now() }, { merge: true })),
+  qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 480, color: { dark: "#3A0B12", light: "#FFFFFF" } }),
+  share: (text) => {
+    if (Capacitor.isNativePlatform()) return AppShare.shareText({ text });
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
+  },
 };
 
 /* ---------------- tirer vers le bas : actualiser + vérifier la mise à jour ---------------- */

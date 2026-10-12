@@ -2,3 +2,5 @@ node_modules/
 www/shim.js
 *.apk
 .DS_Store
+client/client.js
+client/config.js

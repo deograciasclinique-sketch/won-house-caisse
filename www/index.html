@@ -51,7 +51,36 @@ button{cursor:pointer}
 .mode.local{background:var(--warn-soft);color:var(--warn)}
 
 /* tabs */
-.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.tabs button{position:relative}
+.tabs .badge{position:absolute;top:2px;right:calc(50% - 22px);min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;font-weight:800}
+/* commandes clients */
+.cmd-head{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin:4px 0 12px;box-shadow:var(--shadow)}
+.cmd-head .t{flex:1}.cmd-head .t b{display:block;font-family:var(--display);font-size:15.5px}.cmd-head .t small{color:var(--muted);font-size:12.5px}
+.switch{border:0;border-radius:99px;padding:8px 14px;font-weight:800;font-size:13px}
+.switch.on{background:var(--good-soft);color:var(--good)}.switch.off{background:var(--bad-soft);color:var(--bad)}
+.cmd{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.cmd.neuve{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.cmd .h{display:flex;align-items:baseline;gap:8px}
+.cmd .code{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.08em;color:var(--accent)}
+.cmd .when{margin-left:auto;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.cmd .who{font-weight:700;margin-top:2px}
+.cmd .who a{color:var(--accent);text-decoration:none}
+.cmd .mode-tag{display:inline-block;font-size:12px;font-weight:800;padding:3px 9px;border-radius:99px;background:var(--surface-2);margin-top:6px}
+.cmd .items{margin:8px 0 4px;font-variant-numeric:tabular-nums}
+.cmd .items div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:14.5px}
+.cmd .items .tot{border-top:1px dashed var(--line);margin-top:4px;padding-top:6px;font-weight:800}
+.cmd .warn{color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:6px 9px;font-size:13px;margin-top:6px}
+.cmd .noteC{background:var(--surface-2);border-radius:10px;padding:6px 9px;font-size:13.5px;margin-top:6px}
+.cmd .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.cmd .acts .btn{flex:1;margin:0}
+.cmd .st{font-size:12.5px;font-weight:800;padding:3px 9px;border-radius:99px}
+.st.nouvelle{background:var(--accent-soft);color:var(--accent)}.st.acceptee{background:var(--warn-soft);color:var(--warn)}.st.prete{background:var(--good-soft);color:var(--good)}.st.servie{background:var(--surface-2);color:var(--muted)}.st.refusee{background:var(--bad-soft);color:var(--bad)}
+.dispo{display:flex;flex-wrap:wrap;gap:8px}
+.dispo button{border:1.5px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 12px;font-weight:700;font-size:13.5px}
+.dispo button.off{background:var(--bad-soft);border-color:transparent;color:var(--bad);text-decoration:line-through}
+.qrbox{text-align:center}.qrbox img{width:230px;height:230px;border-radius:14px;background:#fff;padding:8px}
+.qrbox .url{font-size:13px;color:var(--muted);word-break:break-all;margin:8px 0}
 .tabs button{background:none;border:0;padding:6px 2px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11.5px;font-weight:700;color:var(--muted)}
 .tabs button svg{width:22px;height:22px}
 .tabs button[aria-selected="true"]{color:var(--accent);background:var(--accent-soft)}
@@ -267,6 +296,7 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
 
 <nav class="tabs" role="tablist" aria-label="Sections">
   <button role="tab" data-tab="jour" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>Aujourd'hui</button>
+  <button role="tab" data-tab="commandes" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17h16M6 17a6 6 0 0 1 12 0M12 7V5M10 5h4"/><path d="M3 20h18"/></svg>Commandes<span class="badge" id="cmd-badge" hidden></span></button>
   <button role="tab" data-tab="journal" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h9"/></svg>Journal</button>
   <button role="tab" data-tab="bilan" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-7"/></svg>Bilan</button>
   <button role="tab" data-tab="carte" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v8a2 2 0 0 0 2 2v8M10 3v6M14 21V3c3 0 4 3 4 7h-4"/></svg>Carte</button>
@@ -291,6 +321,7 @@ function ico(n){n=(n||"").toLowerCase();
 const S = { days:{}, tarifs:DEFAULT_TARIFS, tab:"jour", date:todayISO(), period:null, mode:"loading" };
 let db=null, assets=null, downloads=null, user=null, myId=null, readOnly=false;
 const CLIENT=uidSafe(); const recentLocal={}; S.raw={}; S.names={};
+S.cmds=null; S.cmdErr=""; S.pub=undefined; const cmdKnown=new Set(); let cmdReady=false;
 function uidSafe(){return "c"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 
 /* ---------- utils ---------- */
@@ -365,7 +396,7 @@ async function saveCaisse(date,val){
 async function saveTarifs(t){
   S.tarifs=t; render();
   if(S.mode!=="live"){localSave();return;}
-  try{ await queued("config/tarifs",()=>db.doc("config/tarifs").set(JSON.parse(JSON.stringify(t)))); toast("Carte enregistrée"); }
+  try{ await queued("config/tarifs",()=>db.doc("config/tarifs").set(JSON.parse(JSON.stringify(t)))); syncMenu(); toast("Carte enregistrée"); }
   catch(e){ handleWriteError(e); }
 }
 function handleWriteError(e){
@@ -393,7 +424,8 @@ async function boot(){
       if(got&1){const remote=snap.docChanges().some(c=>c.type!=="removed"&&!c.doc.metadata.hasPendingWrites&&!(recentLocal[c.doc.id]&&Date.now()-recentLocal[c.doc.id]<5000));if(remote){toast("🔄 Nouvelles données reçues d'un autre téléphone");pulse();}}
       const raw={},m={};snap.docs.forEach(x=>{const o=x.data();if(o){raw[x.id]=o;m[x.id]=normDay(x.id,o);}});S.raw=raw;S.days=m;if(!(got&1))S.anim=true;got|=1;render();},err=>{toast(err&&err.wh?err.wh:"Connexion perdue. Relancez l'application.");});
     window.addEventListener("online",()=>{let ch=false;for(const k in S.names)if(!S.names[k]){delete S.names[k];ch=true;}if(ch)render();});
-    db.doc("config/tarifs").onSnapshot(snap=>{if(snap.exists){S.tarifs=snap.data();}got|=2;render();},()=>{});
+    db.doc("config/tarifs").onSnapshot(snap=>{if(snap.exists){S.tarifs=snap.data();}got|=2;syncMenu();render();},()=>{});
+    startOrders();
   }else{
     S.mode="local"; mode.textContent="Sur ce téléphone"; mode.className="mode local";
     localLoad(); S.anim=true; render();
@@ -409,6 +441,8 @@ function render(){
   if(S.tab==="journal") view.innerHTML=renderJournal();
   if(S.tab==="bilan") view.innerHTML=renderBilan();
   if(S.tab==="carte") view.innerHTML=renderCarte();
+  if(S.tab==="commandes") view.innerHTML=renderCommandes();
+  updateBadge();
   window.scrollTo(0,sy);
   loadNames();
   if(S.anim){view.classList.remove("enter");void view.offsetWidth;view.classList.add("enter");countUp();S.anim=false;}
@@ -578,7 +612,7 @@ function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null;}}
 const WA_ICON=`<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z"/></svg>`;
 function openMenu(){
   const A=window.__whApp;
-  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
+  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["commandes","🛎️","Commandes clients","Menu en ligne, commandes reçues, QR code"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
   openSheet(`<h3>Menu</h3><div class="menu-list">
     ${nav.map(([t,i,l,d])=>`<button class="menu-item" data-go="${t}"><span class="mi">${i}</span><span>${l}<small>${d}</small></span></button>`).join("")}
     <button class="menu-item" data-sync><span class="mi">🔄</span><span>Synchronisation<small>État de l'envoi, téléphones reliés</small></span></button>
@@ -779,6 +813,7 @@ async function exportMonth(){
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;S.tab=b.dataset.tab;S.anim=true;document.querySelectorAll(".tabs [data-tab]").forEach(x=>x.setAttribute("aria-selected",x===b));if(S.tab==="bilan")S.period=periodOf(S.date);window.scrollTo(0,0);render();});
 view.addEventListener("click",e=>{
   const pvw=e.target.closest("[data-view]"); if(pvw){e.stopPropagation();viewPhoto(pvw.dataset.view,pvw.dataset.cap);return;}
+  const c=e.target.closest("[data-cmd]"); if(c){cmdAction(c);return;}
   const t=e.target.closest("[data-act],[data-edit-v],[data-edit-a],[data-goto],[data-del-t]"); if(!t) return;
   const a=t.dataset.act;
   if(a==="prev"){S.date=addDays(S.date,-1);S.anim=true;render();}
@@ -801,6 +836,135 @@ view.addEventListener("change",async e=>{
     try{const r=await uploadPhoto(f,kind==="snap-v"?"Vente":"Achat"); kind==="snap-v"?venteSheet(null,r):achatSheet(null,r);}catch(err){toast("Photo non envoyée. Vérifiez la connexion et réessayez.");}
     return;}if(e.target.id==="pickdate"&&e.target.value){S.date=e.target.value;S.anim=true;render();}});
 function readTarifsForm(){const out={...S.tarifs,produits:[]};(S.tarifs.produits||[]).forEach((p,i)=>{const n=document.getElementById("tn"+i),pr=document.getElementById("tp"+i);out.produits.push({nom:n?n.value:p.nom,prix:pr?(parseInt(pr.value)||0):p.prix});});return out;}
+
+/* ---------- commandes des clients ---------- */
+const O=()=>window.__whOrders;
+const CMD_LABEL={nouvelle:"Nouvelle",acceptee:"En préparation",prete:"Prête",servie:"Servie",refusee:"Refusée"};
+function startOrders(){
+  if(!O()) return;
+  O().watch((list,added,fromCache,err)=>{
+    if(list===null){S.cmdErr=err||"Commandes indisponibles.";if(S.tab==="commandes")render();return;}
+    S.cmdErr="";
+    const nouvelles=list.filter(c=>c.statut==="nouvelle"&&!cmdKnown.has(c.id));
+    list.forEach(c=>cmdKnown.add(c.id));
+    if(cmdReady&&nouvelles.length){ring();toast("🛎️ Nouvelle commande client : n° "+nouvelles.map(c=>c.code).join(", "));}
+    if(!fromCache) cmdReady=true; else if(S.cmds===null) cmdReady=true;
+    S.cmds=list; if(S.tab==="commandes")render(); else updateBadge();
+  });
+  O().watchMenu(m=>{const first=S.pub===undefined;S.pub=m;if(m===null)syncMenu(true);else if(first)syncMenu();if(S.tab==="commandes")render();});
+}
+function menuProduits(){return (S.tarifs.produits||[]).filter(p=>p&&p.nom&&String(p.nom).trim()).map(p=>({nom:String(p.nom).trim(),prix:Number(p.prix)||0}));}
+// Garde le menu public identique à la carte (plats et prix).
+function syncMenu(create){
+  if(!O()||S.mode!=="live"||readOnly||S.pub===undefined) return;
+  const produits=menuProduits();
+  if(create||!S.pub){O().publishMenu({produits,ouvert:true,indispo:[],tel:""});return;}
+  if(JSON.stringify(S.pub.produits||[])!==JSON.stringify(produits)){
+    const noms=new Set(produits.map(p=>p.nom));
+    O().publishMenu({produits,indispo:(S.pub.indispo||[]).filter(n=>noms.has(n))});
+  }
+}
+function updateBadge(){const b=document.getElementById("cmd-badge");if(!b)return;const n=(S.cmds||[]).filter(c=>c.statut==="nouvelle").length;b.hidden=!n;b.textContent=n;}
+function ring(){
+  try{navigator.vibrate&&navigator.vibrate([200,100,200]);}catch(e){}
+  try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;const ctx=new A();[0,.25,.5].forEach((t,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=i===2?1175:880;g.gain.setValueAtTime(.0001,ctx.currentTime+t);g.gain.exponentialRampToValueAtTime(.35,ctx.currentTime+t+.02);g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+t+.22);o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.25);});setTimeout(()=>ctx.close(),1200);}catch(e){}
+}
+function sameDay(ts,iso){return toISO(new Date(ts))===iso;}
+function cmdCard(c){
+  const prix={};(S.tarifs.produits||[]).forEach(p=>prix[p.nom]=Number(p.prix)||0);
+  const ecart=(c.items||[]).some(l=>prix[l.produit]!==undefined&&prix[l.produit]!==Number(l.prix));
+  const inconnu=(c.items||[]).some(l=>prix[l.produit]===undefined);
+  const tel=c.tel?String(c.tel).replace(/[^\d+]/g,""):"";
+  const ou=c.mode==="sur place"?"🪑 Sur place"+(c.table?" · table "+esc(c.table):""):c.mode==="livraison"?"🛵 Livraison":"🛍️ À emporter";
+  const acts={
+    nouvelle:`<button class="btn primary small" data-cmd="acceptee" data-id="${c.id}">✓ Accepter</button><button class="btn ghost small danger" data-cmd="refuser" data-id="${c.id}">Refuser</button>`,
+    acceptee:`<button class="btn primary small" data-cmd="prete" data-id="${c.id}">🔔 Prête</button><button class="btn ghost small" data-cmd="servie" data-id="${c.id}">Servie et payée</button>`,
+    prete:`<button class="btn primary small" data-cmd="servie" data-id="${c.id}">💰 Servie et payée</button>`,
+  }[c.statut]||"";
+  return `<div class="cmd ${c.statut==="nouvelle"?"neuve":""}">
+    <div class="h"><span class="code">n° ${esc(c.code||"")}</span><span class="st ${esc(c.statut)}">${CMD_LABEL[c.statut]||esc(c.statut)}</span><span class="when">${esc(hhmm(c.at))}${sameDay(c.at,todayISO())?"":" · "+esc(new Date(c.at).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}))}</span></div>
+    <div class="who">${esc(c.nom||"Client")}${tel?` · <a href="tel:${esc(tel)}">📞 ${esc(c.tel)}</a>`:""}</div>
+    <span class="mode-tag">${ou}</span>${c.adresse?`<div class="noteC">📍 ${esc(c.adresse)}</div>`:""}
+    <div class="items">${(c.items||[]).map(l=>`<div><span>${esc(l.qte)} × ${esc(l.produit)}</span><span>${F((Number(l.qte)||0)*(Number(l.prix)||0))}</span></div>`).join("")}<div class="tot"><span>Total à encaisser</span><span>${F(c.total)}</span></div></div>
+    ${c.note?`<div class="noteC">📝 ${esc(c.note)}</div>`:""}
+    ${ecart||inconnu?`<div class="warn">⚠ ${inconnu?"Un plat n'est plus sur la carte.":"Un prix est différent de la carte actuelle."} Vérifiez avec le client.</div>`:""}
+    ${c.statut==="servie"&&c.venteDate?`<div class="noteC">✓ Enregistrée dans les ventes du ${esc(parseISO(c.venteDate).toLocaleDateString("fr-FR"))}</div>`:""}
+    ${c.statut==="refusee"&&c.motif?`<div class="noteC">Motif : ${esc(c.motif)}</div>`:""}
+    ${acts&&!readOnly?`<div class="acts">${acts}</div>`:""}
+  </div>`;
+}
+function renderCommandes(){
+  const pub=S.pub;
+  if(!O()||S.mode!=="live") return `${banner()}<div class="empty">Les commandes clients demandent une connexion au serveur.</div>`;
+  const list=S.cmds||[];
+  const aTraiter=list.filter(c=>c.statut==="nouvelle").sort((a,b)=>a.at-b.at);
+  const enCours=list.filter(c=>c.statut==="acceptee"||c.statut==="prete").sort((a,b)=>a.at-b.at);
+  const finies=list.filter(c=>(c.statut==="servie"||c.statut==="refusee")&&Date.now()-c.at<86400000*2);
+  const caJour=list.filter(c=>c.statut==="servie"&&c.venteDate===todayISO()).reduce((t,c)=>t+(Number(c.total)||0),0);
+  const ouvert=!!(pub&&pub.ouvert);
+  const indispo=new Set((pub&&pub.indispo)||[]);
+  return `${banner()}
+  <div class="cmd-head"><div class="t"><b>${ouvert?"Commandes ouvertes":"Commandes fermées"}</b><small>${ouvert?"Les clients peuvent commander depuis le menu en ligne.":"Les clients voient le menu mais ne peuvent pas commander."}</small></div>
+    <button class="switch ${ouvert?"on":"off"}" data-cmd="ouvrir" ${readOnly||!pub?"disabled":""}>${ouvert?"● Ouvert":"○ Fermé"}</button></div>
+  <button class="btn ghost" style="width:100%;margin:0 0 14px" data-cmd="lien">📲 Lien et QR code du menu client</button>
+  ${S.cmdErr?`<div class="banner">${esc(S.cmdErr)}</div>`:""}
+  ${S.cmds===null&&!S.cmdErr?`<div class="empty">Chargement des commandes…</div>`:""}
+  <h2 class="sec">À traiter ${aTraiter.length?`(${aTraiter.length})`:""}</h2>
+  ${aTraiter.length?aTraiter.map(cmdCard).join(""):`<div class="empty" style="padding:14px">Aucune nouvelle commande. Une sonnerie vous prévient quand un client commande (application ouverte).</div>`}
+  ${enCours.length?`<h2 class="sec">En cours (${enCours.length})</h2>${enCours.map(cmdCard).join("")}`:""}
+  ${finies.length?`<h2 class="sec">Terminées${caJour?` · aujourd'hui ${F(caJour)}`:""}</h2>${finies.map(cmdCard).join("")}`:""}
+  <h2 class="sec">Plats disponibles pour les clients</h2>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez un plat épuisé pour le cacher aux clients ; touchez-le encore quand il revient. Les prix viennent de l'onglet Carte.</p>
+  <div class="dispo">${menuProduits().map(p=>`<button class="${indispo.has(p.nom)?"off":""}" data-cmd="dispo" data-nom="${esc(p.nom)}" ${readOnly||!pub?"disabled":""}>${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`}</div>
+  <h2 class="sec">Téléphone affiché aux clients</h2>
+  <div class="list"><div class="caisse"><input id="pub-tel" type="tel" placeholder="ex. 70 00 00 00" value="${esc((pub&&pub.tel)||"")}" ${readOnly?"disabled":""}><button class="btn small primary" data-cmd="tel" ${readOnly||!pub?"disabled":""}>Valider</button></div></div>`;
+}
+async function cmdAction(b){
+  const a=b.dataset.cmd, id=b.dataset.id, c=(S.cmds||[]).find(x=>x.id===id);
+  if(readOnly) return;
+  if(a==="ouvrir"&&S.pub){O().publishMenu({ouvert:!S.pub.ouvert});toast(S.pub.ouvert?"Commandes fermées":"Commandes ouvertes");}
+  else if(a==="dispo"&&S.pub){const set=new Set(S.pub.indispo||[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({indispo:[...set]});toast(set.has(n)?n+" : épuisé":n+" : de nouveau disponible");}
+  else if(a==="tel"){const v=(document.getElementById("pub-tel")?.value||"").trim().slice(0,30);O().publishMenu({tel:v});toast("Téléphone enregistré");}
+  else if(a==="lien") lienSheet();
+  else if(!c) return;
+  else if(a==="acceptee"){O().setStatut(id,"acceptee");toast("Commande n° "+c.code+" acceptée");}
+  else if(a==="prete"){O().setStatut(id,"prete");toast("Commande n° "+c.code+" prête");}
+  else if(a==="refuser") refusSheet(c);
+  else if(a==="servie"){
+    if(!b.dataset.sure){b.dataset.sure="1";b.textContent="Confirmer : encaissé "+F(c.total)+" ?";return;}
+    const date=todayISO(), h=hhmm(Date.now());
+    const qui=c.mode==="sur place"&&c.table?" · table "+c.table:c.mode==="livraison"?" · livraison":c.mode==="à emporter"?" · à emporter":"";
+    for(const [i,l] of (c.items||[]).entries()){
+      await saveItem(date,"ventes",{id:"cmd"+c.id+"_"+i,produit:l.produit,qte:Number(l.qte)||1,prix:Number(l.prix)||0,heure:h,note:"Commande client n° "+c.code+qui,photo:null,photoAt:null});
+    }
+    O().setStatut(id,"servie",{venteDate:date});
+    celebrate("+"+F(c.total)); toast("Vente enregistrée dans Aujourd'hui");
+  }
+}
+function refusSheet(c){
+  const motifs=["Plat épuisé","Trop de commandes en ce moment","Hors de notre zone de livraison","Restaurant bientôt fermé"];
+  openSheet(`<h3>Refuser la commande n° ${esc(c.code)} ?</h3><p style="color:var(--muted);margin:0 0 10px">Le client verra le motif sur son téléphone.</p>
+    <div class="menu-list">${motifs.map(m=>`<button class="menu-item" data-motif="${esc(m)}"><span class="mi">✕</span><span>${esc(m)}</span></button>`).join("")}</div>
+    <div class="sheet-actions"><button class="btn ghost" data-cancel>Annuler</button></div>`,sh=>{
+    sh.querySelector("[data-cancel]").addEventListener("click",closeSheet);
+    sh.querySelectorAll("[data-motif]").forEach(x=>x.addEventListener("click",()=>{O().setStatut(c.id,"refusee",{motif:x.dataset.motif});closeSheet();toast("Commande n° "+c.code+" refusée");}));
+  });
+}
+function lienSheet(){
+  const base=O().url;
+  openSheet(`<h3>Menu en ligne pour les clients</h3>
+    <p style="color:var(--muted);margin:0 0 10px;font-size:14px">Le client ouvre ce lien (ou scanne le QR code) : il voit le menu et commande, sans installer d'application. Il ne voit jamais la caisse.</p>
+    <div class="qrbox"><img id="qr-img" alt="QR code du menu"><div class="url" id="qr-url"></div></div>
+    <div class="field"><label for="qr-table">QR code pour une table (facultatif)</label><input id="qr-table" inputmode="numeric" maxlength="6" placeholder="N° de table, ex. 3"></div>
+    <p style="color:var(--muted);font-size:12.5px;margin:4px 0 10px">Avec un numéro de table, le client n'a pas besoin de l'écrire. Faites une capture d'écran du QR code pour l'imprimer et le poser sur la table.</p>
+    <div class="sheet-actions"><button class="btn ghost" data-copy>Copier le lien</button><button class="btn primary" data-wa>Envoyer par WhatsApp</button></div>`,sh=>{
+    const url=()=>{const t=(sh.querySelector("#qr-table").value||"").replace(/[^0-9A-Za-z]/g,"");return t?base+"?table="+encodeURIComponent(t):base;};
+    const draw=async()=>{const u=url();sh.querySelector("#qr-url").textContent=u;try{sh.querySelector("#qr-img").src=await O().qr(u);}catch(e){}};
+    sh.querySelector("#qr-table").addEventListener("input",draw); draw();
+    sh.querySelector("[data-copy]").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url());toast("Lien copié");}catch(e){toast(url());}});
+    sh.querySelector("[data-wa]").addEventListener("click",async()=>{try{await O().share("🍽️ Le menu de WON HOUSE : choisissez vos plats et commandez ici 👇\n"+url());}catch(e){toast("Envoi impossible");}});
+  });
+}
 
 window.__rerender=()=>render();
 boot();
