@@ -318,6 +318,14 @@ window.__whOrders = {
       next(list, added, s.metadata.fromCache);
     }, e => { setState("error", explain(e)); next(null, [], true, explain(e)); });
   },
+  update: (id, data) => write(() => setDoc(doc(fs, "commandes", id), { ...data, majAt: Date.now(), majBy: currentUser?.uid || null }, { merge: true })),
+  // position actuelle du téléphone (pour enregistrer la position du restaurant)
+  position: () => new Promise((ok, ko) => {
+    if (!navigator.geolocation) return ko(new Error("Localisation indisponible sur ce téléphone."));
+    navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, precision: Math.round(p.coords.accuracy || 0) }),
+      e => ko(new Error(e && e.code === 1 ? "Localisation refusée : autorisez-la pour WON HOUSE dans les réglages du téléphone." : "Position introuvable : activez le GPS puis réessayez.")),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  }),
   setStatut: (id, statut, extra) => write(() => setDoc(doc(fs, "commandes", id), { statut, ...(extra || {}), majAt: Date.now(), majBy: currentUser?.uid || null }, { merge: true })),
   // « null » seulement si le serveur confirme que le menu n'existe pas encore (jamais d'après le seul cache hors ligne).
   watchMenu: (next) => (fs && currentUser ? onSnapshot(doc(fs, "public", "menu"), { includeMetadataChanges: true }, s => {

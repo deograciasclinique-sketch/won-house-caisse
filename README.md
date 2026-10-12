@@ -19,6 +19,15 @@ Les clients voient **uniquement le menu** et **commandent**, sans installer d'ap
   On y ouvre ou ferme les commandes, on marque un plat « épuisé », on règle le téléphone affiché aux clients,
   et on obtient le lien et le QR code du menu (général ou par table).
 - Le menu public (`public/menu`) est copié automatiquement depuis la Carte (plats et prix).
+- **Livraison** : le client touche « Partager ma position » (GPS du téléphone). Les frais sont calculés à
+  **500 F par km commencé** (au moins 1 km), à vol d'oiseau depuis le restaurant, et ajoutés au total « À payer ».
+  Le gestionnaire règle le prix par km et la position du restaurant (onglet Commandes → Livraison), voit la distance,
+  ouvre l'itinéraire Google Maps vers le client, et l'app l'avertit si les frais ne correspondent pas à la position.
+  À la livraison, une vente « Livraison » est ajoutée dans la caisse.
+- **Paiement Mobile Money** (Orange Money *144#, Moov Money *555#) : après la commande, le client touche
+  « Ouvrir Orange Money » (le code s'affiche dans son téléphone), envoie le montant au numéro du restaurant,
+  puis recopie la référence du SMS. Le gestionnaire vérifie le SMS reçu et touche « Paiement reçu » ou « Pas reçu ».
+  Le client ne peut jamais marquer lui-même un paiement comme reçu. Numéros, nom et codes : onglet Commandes → Paiement Mobile Money.
 - **Sécurité** (`firestore.rules`) : un client peut seulement lire le menu, créer une commande valide quand les commandes
   sont ouvertes, et lire SA commande grâce à son numéro secret. Il ne voit jamais les ventes, achats, caisse ni les autres commandes.
 

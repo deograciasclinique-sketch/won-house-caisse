@@ -7,10 +7,28 @@ service cloud.firestore {
 
     function texte(v, max) { return v is string && v.size() <= max; }
 
+    // Position GPS du client (livraison) : facultative.
+    function positionValide(p) {
+      return p == null || (p is map && p.keys().hasOnly(['lat', 'lng', 'precision'])
+        && p.lat is number && p.lng is number && p.lat >= -90 && p.lat <= 90 && p.lng >= -180 && p.lng <= 180);
+    }
+
+    // Paiement : « mobile » (Orange / Moov Money) ou « especes ».
+    function paiementValide(p) {
+      return p is map && p.keys().hasOnly(['mode', 'operateur', 'numero', 'ref', 'etat'])
+        && p.mode in ['mobile', 'especes']
+        && texte(p.operateur, 10) && texte(p.numero, 30) && texte(p.ref, 40);
+    }
+
     // Une commande envoyée par un client depuis la page « menu en ligne ».
     function commandeValide(d) {
-      return d.keys().hasOnly(['items', 'total', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
-        && d.keys().hasAll(['items', 'total', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
+      return d.keys().hasOnly(['items', 'total', 'frais', 'distanceKm', 'aPayer', 'position', 'paiement', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
+        && d.keys().hasAll(['items', 'total', 'frais', 'distanceKm', 'aPayer', 'position', 'paiement', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
+        && d.frais is number && d.frais >= 0 && d.frais <= 200000
+        && d.distanceKm is number && d.distanceKm >= 0 && d.distanceKm <= 300
+        && d.aPayer == d.total + d.frais
+        && positionValide(d.position)
+        && paiementValide(d.paiement) && d.paiement.etat == 'attente' 
         && d.statut == 'nouvelle'
         && d.at == request.time
         && d.items is list && d.items.size() > 0 && d.items.size() <= 30
@@ -28,12 +46,25 @@ service cloud.firestore {
       allow write: if equipe();
     }
 
+    // Le client déclare son paiement Mobile Money (il ne peut jamais le marquer « reçu »).
+    function declarationPaiement() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paiement'])
+        && resource.data.paiement.mode == 'mobile'
+        && resource.data.paiement.etat in ['attente', 'refuse']
+        && paiementValide(request.resource.data.paiement)
+        && request.resource.data.paiement.mode == 'mobile'
+        && request.resource.data.paiement.etat == 'declare'
+        && request.resource.data.paiement.operateur in ['orange', 'moov']
+        && request.resource.data.paiement.ref.size() > 0;
+    }
+
     // Commandes des clients.
     match /commandes/{id} {
       allow create: if commandeValide(request.resource.data);
       // Le client suit SA commande grâce à son numéro secret (impossible de lister les autres).
       allow get: if true;
-      allow list, update, delete: if equipe();
+      allow update: if equipe() || declarationPaiement();
+      allow list, delete: if equipe();
     }
 
     // Tout le reste (journées, ventes, achats, caisse, photos, carte…) : réservé à l'équipe.

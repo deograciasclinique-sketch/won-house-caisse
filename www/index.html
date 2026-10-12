@@ -79,6 +79,10 @@ button{cursor:pointer}
 .dispo{display:flex;flex-wrap:wrap;gap:8px}
 .dispo button{border:1.5px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 12px;font-weight:700;font-size:13.5px}
 .dispo button.off{background:var(--bad-soft);border-color:transparent;color:var(--bad);text-decoration:line-through}
+.paydec{background:var(--warn-soft);color:var(--ink);border-radius:12px;padding:9px 11px;margin-top:8px;font-size:14px}
+.paydec small{color:var(--muted)}
+.payok{background:var(--good-soft);color:var(--good);border-radius:10px;padding:7px 10px;margin-top:6px;font-weight:800;font-size:13.5px}
+.maplink{display:block;text-align:center;text-decoration:none;margin-top:8px}
 .qrbox{text-align:center}.qrbox img{width:230px;height:230px;border-radius:14px;background:#fff;padding:8px}
 .qrbox .url{font-size:13px;color:var(--muted);word-break:break-all;margin:8px 0}
 .tabs button{background:none;border:0;padding:6px 2px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11.5px;font-weight:700;color:var(--muted)}
@@ -875,17 +879,29 @@ function cmdCard(c){
   const ecart=(c.items||[]).some(l=>prix[l.produit]!==undefined&&prix[l.produit]!==Number(l.prix));
   const inconnu=(c.items||[]).some(l=>prix[l.produit]===undefined);
   const tel=c.tel?String(c.tel).replace(/[^\d+]/g,""):"";
+  const aPayer=Number(c.aPayer??c.total)||0, pay=c.paiement||{mode:"especes"};
+  const R=S.pub&&S.pub.livraison, pk=Number(R&&R.prixKm)||500;
+  let fraisAttendu=null; if(c.position&&R&&typeof R.lat==="number"){fraisAttendu=Math.max(1,Math.ceil(distKm(R,c.position)))*pk;}
+  const payHtml=pay.mode!=="mobile"?`<div class="noteC">💵 Paiement en espèces</div>`:
+    pay.etat==="confirme"?`<div class="payok">✓ Payé par ${pay.operateur==="moov"?"Moov":"Orange"} Money${pay.ref?" · réf. "+esc(pay.ref):""}</div>`:
+    pay.etat==="declare"?`<div class="paydec"><b>📱 Paiement déclaré — à vérifier</b><br>${pay.operateur==="moov"?"Moov":"Orange"} Money · depuis ${esc(pay.numero)} · réf. <b>${esc(pay.ref)}</b><br><small>Vérifiez que le SMS de ${F(aPayer)} est bien arrivé sur le téléphone du restaurant.</small>
+      ${readOnly?"":`<div class="acts"><button class="btn primary small" data-cmd="payok" data-id="${c.id}">✓ Paiement reçu</button><button class="btn ghost small danger" data-cmd="payko" data-id="${c.id}">Pas reçu</button></div>`}</div>`:
+    pay.etat==="refuse"?`<div class="warn">📱 Paiement signalé « pas reçu ». Le client peut renvoyer une référence.</div>`:
+    `<div class="noteC">📱 Mobile Money — en attente du paiement du client</div>`;
   const ou=c.mode==="sur place"?"🪑 Sur place"+(c.table?" · table "+esc(c.table):""):c.mode==="livraison"?"🛵 Livraison":"🛍️ À emporter";
   const acts={
     nouvelle:`<button class="btn primary small" data-cmd="acceptee" data-id="${c.id}">✓ Accepter</button><button class="btn ghost small danger" data-cmd="refuser" data-id="${c.id}">Refuser</button>`,
     acceptee:`<button class="btn primary small" data-cmd="prete" data-id="${c.id}">🔔 Prête</button><button class="btn ghost small" data-cmd="servie" data-id="${c.id}">Servie et payée</button>`,
-    prete:`<button class="btn primary small" data-cmd="servie" data-id="${c.id}">💰 Servie et payée</button>`,
+    prete:`<button class="btn primary small" data-cmd="servie" data-id="${c.id}">💰 ${c.mode==="livraison"?"Livrée et payée":"Servie et payée"}</button>`,
   }[c.statut]||"";
   return `<div class="cmd ${c.statut==="nouvelle"?"neuve":""}">
     <div class="h"><span class="code">n° ${esc(c.code||"")}</span><span class="st ${esc(c.statut)}">${CMD_LABEL[c.statut]||esc(c.statut)}</span><span class="when">${esc(hhmm(c.at))}${sameDay(c.at,todayISO())?"":" · "+esc(new Date(c.at).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}))}</span></div>
     <div class="who">${esc(c.nom||"Client")}${tel?` · <a href="tel:${esc(tel)}">📞 ${esc(c.tel)}</a>`:""}</div>
     <span class="mode-tag">${ou}</span>${c.adresse?`<div class="noteC">📍 ${esc(c.adresse)}</div>`:""}
-    <div class="items">${(c.items||[]).map(l=>`<div><span>${esc(l.qte)} × ${esc(l.produit)}</span><span>${F((Number(l.qte)||0)*(Number(l.prix)||0))}</span></div>`).join("")}<div class="tot"><span>Total à encaisser</span><span>${F(c.total)}</span></div></div>
+    ${c.position?`<a class="btn ghost small maplink" href="https://www.google.com/maps/dir/?api=1&destination=${c.position.lat},${c.position.lng}" target="_blank" rel="noopener">🗺️ Itinéraire vers le client${c.distanceKm?" · "+esc(c.distanceKm)+" km":""}</a>`:""}
+    <div class="items">${(c.items||[]).map(l=>`<div><span>${esc(l.qte)} × ${esc(l.produit)}</span><span>${F((Number(l.qte)||0)*(Number(l.prix)||0))}</span></div>`).join("")}${c.mode==="livraison"?`<div><span>Livraison${c.distanceKm?" ("+esc(c.distanceKm)+" km)":""}</span><span>${c.frais?F(c.frais):"à fixer"}</span></div>`:""}<div class="tot"><span>Total à encaisser</span><span>${F(aPayer)}</span></div></div>
+    ${payHtml}
+    ${fraisAttendu!==null&&Number(c.frais)!==fraisAttendu?`<div class="warn">⚠ Frais de livraison attendus : ${F(fraisAttendu)} (le client a ${F(c.frais||0)}). Vérifiez avec lui.</div>`:""}
     ${c.note?`<div class="noteC">📝 ${esc(c.note)}</div>`:""}
     ${ecart||inconnu?`<div class="warn">⚠ ${inconnu?"Un plat n'est plus sur la carte.":"Un prix est différent de la carte actuelle."} Vérifiez avec le client.</div>`:""}
     ${c.statut==="servie"&&c.venteDate?`<div class="noteC">✓ Enregistrée dans les ventes du ${esc(parseISO(c.venteDate).toLocaleDateString("fr-FR"))}</div>`:""}
@@ -917,7 +933,31 @@ function renderCommandes(){
   <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez un plat épuisé pour le cacher aux clients ; touchez-le encore quand il revient. Les prix viennent de l'onglet Carte.</p>
   <div class="dispo">${menuProduits().map(p=>`<button class="${indispo.has(p.nom)?"off":""}" data-cmd="dispo" data-nom="${esc(p.nom)}" ${readOnly||!pub?"disabled":""}>${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`}</div>
   <h2 class="sec">Téléphone affiché aux clients</h2>
-  <div class="list"><div class="caisse"><input id="pub-tel" type="tel" placeholder="ex. 70 00 00 00" value="${esc((pub&&pub.tel)||"")}" ${readOnly?"disabled":""}><button class="btn small primary" data-cmd="tel" ${readOnly||!pub?"disabled":""}>Valider</button></div></div>`;
+  <div class="list"><div class="caisse"><input id="pub-tel" type="tel" placeholder="ex. 70 00 00 00" value="${esc((pub&&pub.tel)||"")}" ${readOnly?"disabled":""}><button class="btn small primary" data-cmd="tel" ${readOnly||!pub?"disabled":""}>Valider</button></div></div>
+  ${reglagesPaiementLivraison(pub)}`;
+}
+function distKm(a,b){const R=6371,r=x=>x*Math.PI/180;const dLa=r(b.lat-a.lat),dLo=r(b.lng-a.lng);const h=Math.sin(dLa/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function reglagesPaiementLivraison(pub){
+  const P=(pub&&pub.paiement)||{}, L=(pub&&pub.livraison)||{}, dis=readOnly||!pub?"disabled":"";
+  const pos=typeof L.lat==="number"?`📍 ${L.lat.toFixed(5)}, ${L.lng.toFixed(5)}${L.precision?" (± "+L.precision+" m)":""}`:"Position du restaurant pas encore enregistrée : les frais de livraison seront « à confirmer ».";
+  return `<h2 class="sec">Paiement Mobile Money</h2>
+  <div class="list" style="padding:12px 14px">
+    <p style="color:var(--muted);font-size:13.5px;margin:0 0 6px">Le client envoie l'argent sur ces numéros, puis tape la référence du SMS. Vous confirmez ici quand l'argent est arrivé. Laissez vide pour ne pas proposer l'opérateur.</p>
+    <div class="field"><label for="mm-orange">Numéro Orange Money du restaurant</label><input id="mm-orange" type="tel" value="${esc(P.orange||"")}" placeholder="ex. 07 00 00 00" ${dis}></div>
+    <div class="field"><label for="mm-moov">Numéro Moov Money du restaurant</label><input id="mm-moov" type="tel" value="${esc(P.moov||"")}" placeholder="ex. 60 00 00 00" ${dis}></div>
+    <div class="field"><label for="mm-nom">Nom affiché du bénéficiaire</label><input id="mm-nom" value="${esc(P.nom||"")}" placeholder="ex. WON HOUSE / Awa K." ${dis}></div>
+    <div class="field"><label>Codes (à changer seulement si l'opérateur change de code)</label><div style="display:flex;gap:8px"><input id="mm-uo" value="${esc(P.ussd_orange||"*144#")}" aria-label="Code Orange Money" ${dis}><input id="mm-um" value="${esc(P.ussd_moov||"*555#")}" aria-label="Code Moov Money" ${dis}></div></div>
+    <button class="btn primary" style="width:100%;margin-top:12px" data-cmd="mm" ${dis}>Enregistrer le paiement</button>
+  </div>
+  <h2 class="sec">Livraison</h2>
+  <div class="list" style="padding:12px 14px">
+    <div class="field" style="margin-top:0"><label for="lv-km">Prix par kilomètre (F)</label><input id="lv-km" inputmode="numeric" class="num" value="${esc(L.prixKm||500)}" ${dis}></div>
+    <p style="color:var(--muted);font-size:13.5px;margin:10px 0 6px">Frais = prix × km commencés (au moins 1 km), à vol d'oiseau depuis le restaurant.</p>
+    <div class="noteC">${pos}</div>
+    <button class="btn ghost" style="width:100%;margin-top:10px" data-cmd="ici" ${dis}>📍 Je suis au restaurant : enregistrer sa position</button>
+    <div class="field"><label for="lv-coord">Ou coller les coordonnées (Google Maps : appui long sur le restaurant)</label><input id="lv-coord" placeholder="ex. 11.17716, -4.29787" ${dis}></div>
+    <button class="btn primary" style="width:100%;margin-top:12px" data-cmd="lv" ${dis}>Enregistrer la livraison</button>
+  </div>`;
 }
 async function cmdAction(b){
   const a=b.dataset.cmd, id=b.dataset.id, c=(S.cmds||[]).find(x=>x.id===id);
@@ -926,24 +966,34 @@ async function cmdAction(b){
   else if(a==="dispo"&&S.pub){const set=new Set(S.pub.indispo||[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({indispo:[...set]});toast(set.has(n)?n+" : épuisé":n+" : de nouveau disponible");}
   else if(a==="tel"){const v=(document.getElementById("pub-tel")?.value||"").trim().slice(0,30);O().publishMenu({tel:v});toast("Téléphone enregistré");}
   else if(a==="lien") lienSheet();
+  else if(a==="mm"){const g=i=>(document.getElementById(i)?.value||"").trim();O().publishMenu({paiement:{orange:g("mm-orange").slice(0,30),moov:g("mm-moov").slice(0,30),nom:g("mm-nom").slice(0,60),ussd_orange:g("mm-uo")||"*144#",ussd_moov:g("mm-um")||"*555#"}});toast("Paiement Mobile Money enregistré");}
+  else if(a==="ici"){b.disabled=true;b.textContent="Recherche de la position…";try{const p=await O().position();O().publishMenu({livraison:{...((S.pub&&S.pub.livraison)||{}),lat:p.lat,lng:p.lng,precision:p.precision}});toast("Position du restaurant enregistrée");}catch(err){toast(err.message||"Position introuvable");b.disabled=false;b.textContent="📍 Je suis au restaurant : enregistrer sa position";}}
+  else if(a==="lv"){const km=Math.max(0,parseInt((document.getElementById("lv-km")?.value||"").replace(/\s/g,""))||500);const raw=(document.getElementById("lv-coord")?.value||"").trim();const L={...((S.pub&&S.pub.livraison)||{}),prixKm:km};
+    if(raw){const m=raw.match(/(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/);if(!m||Math.abs(+m[1])>90||Math.abs(+m[2])>180){toast("Coordonnées non reconnues. Exemple : 11.17716, -4.29787");return;}L.lat=+m[1];L.lng=+m[2];L.precision=0;}
+    O().publishMenu({livraison:L});toast("Livraison enregistrée");}
   else if(!c) return;
   else if(a==="acceptee"){O().setStatut(id,"acceptee");toast("Commande n° "+c.code+" acceptée");}
   else if(a==="prete"){O().setStatut(id,"prete");toast("Commande n° "+c.code+" prête");}
   else if(a==="refuser") refusSheet(c);
+  else if(a==="payok"){O().update(id,{paiement:{...c.paiement,etat:"confirme"}});toast("Paiement de la commande n° "+c.code+" confirmé");}
+  else if(a==="payko"){if(!b.dataset.sure){b.dataset.sure="1";b.textContent="Confirmer : pas reçu ?";return;}O().update(id,{paiement:{...c.paiement,etat:"refuse"}});toast("Le client est prévenu que le paiement n'est pas arrivé");}
   else if(a==="servie"){
-    if(!b.dataset.sure){b.dataset.sure="1";b.textContent="Confirmer : encaissé "+F(c.total)+" ?";return;}
+    const aPayer=Number(c.aPayer??c.total)||0;
+    if(c.paiement&&c.paiement.mode==="mobile"&&c.paiement.etat!=="confirme"&&!b.dataset.sure){toast("⚠ Paiement Mobile Money pas encore confirmé : vérifiez avant de valider.");}
+    if(!b.dataset.sure){b.dataset.sure="1";b.textContent="Confirmer : encaissé "+F(aPayer)+" ?";return;}
     const date=todayISO(), h=hhmm(Date.now());
-    const qui=c.mode==="sur place"&&c.table?" · table "+c.table:c.mode==="livraison"?" · livraison":c.mode==="à emporter"?" · à emporter":"";
+    const qui=(c.mode==="sur place"&&c.table?" · table "+c.table:c.mode==="livraison"?" · livraison":c.mode==="à emporter"?" · à emporter":"")+(c.paiement&&c.paiement.mode==="mobile"?" · "+(c.paiement.operateur==="moov"?"Moov":"Orange")+" Money"+(c.paiement.ref?" réf. "+c.paiement.ref:""):"");
     for(const [i,l] of (c.items||[]).entries()){
       await saveItem(date,"ventes",{id:"cmd"+c.id+"_"+i,produit:l.produit,qte:Number(l.qte)||1,prix:Number(l.prix)||0,heure:h,note:"Commande client n° "+c.code+qui,photo:null,photoAt:null});
     }
+    if(Number(c.frais)>0) await saveItem(date,"ventes",{id:"cmd"+c.id+"_liv",produit:"Livraison",qte:1,prix:Number(c.frais),heure:h,note:"Commande client n° "+c.code+" · "+(c.distanceKm||"?")+" km",photo:null,photoAt:null});
     O().setStatut(id,"servie",{venteDate:date});
-    celebrate("+"+F(c.total)); toast("Vente enregistrée dans Aujourd'hui");
+    celebrate("+"+F(Number(c.aPayer??c.total)||0)); toast("Vente enregistrée dans Aujourd'hui");
   }
 }
 function refusSheet(c){
   const motifs=["Plat épuisé","Trop de commandes en ce moment","Hors de notre zone de livraison","Restaurant bientôt fermé"];
-  openSheet(`<h3>Refuser la commande n° ${esc(c.code)} ?</h3><p style="color:var(--muted);margin:0 0 10px">Le client verra le motif sur son téléphone.</p>
+  openSheet(`<h3>Refuser la commande n° ${esc(c.code)} ?</h3><p style="color:var(--muted);margin:0 0 10px">Le client verra le motif sur son téléphone.${c.paiement&&c.paiement.mode==="mobile"&&c.paiement.etat!=="attente"?" <b>S'il a déjà payé par Mobile Money, renvoyez-lui l'argent.</b>":""}</p>
     <div class="menu-list">${motifs.map(m=>`<button class="menu-item" data-motif="${esc(m)}"><span class="mi">✕</span><span>${esc(m)}</span></button>`).join("")}</div>
     <div class="sheet-actions"><button class="btn ghost" data-cancel>Annuler</button></div>`,sh=>{
     sh.querySelector("[data-cancel]").addEventListener("click",closeSheet);
