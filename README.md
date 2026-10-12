@@ -8,6 +8,24 @@ photos datées prises avec la caméra, et synchronisation entre tous les télép
 Onglet **Releases** du dépôt → dernière version → **WON-HOUSE-caisse.apk**.
 Sur le téléphone : ouvrir le fichier, autoriser « installer des applications inconnues », puis Installer.
 
+## Menu en ligne et commandes des clients
+Les clients voient **uniquement le menu** et **commandent**, sans installer d'application ni créer de compte :
+- **Page client** : https://deograciasclinique-sketch.github.io/won-house-caisse/ (dossier `client/`, code dans `src/client.js`).
+  Le client choisit ses plats, puis « sur place » (n° de table), « à emporter » ou « livraison » (adresse + téléphone),
+  envoie la commande et suit son état en direct : Envoyée → Acceptée → Prête → Servie. Il paie au restaurant.
+  Avec `?table=5` à la fin du lien, la table est déjà remplie (QR code à poser sur la table).
+- **Onglet « Commandes »** dans l'application du gestionnaire : sonnerie et badge à chaque nouvelle commande (application ouverte),
+  boutons Accepter / Refuser (avec motif) / Prête / **Servie et payée** — ce dernier enregistre tout seul les ventes dans « Aujourd'hui ».
+  On y ouvre ou ferme les commandes, on marque un plat « épuisé », on règle le téléphone affiché aux clients,
+  et on obtient le lien et le QR code du menu (général ou par table).
+- Le menu public (`public/menu`) est copié automatiquement depuis la Carte (plats et prix).
+- **Sécurité** (`firestore.rules`) : un client peut seulement lire le menu, créer une commande valide quand les commandes
+  sont ouvertes, et lire SA commande grâce à son numéro secret. Il ne voit jamais les ventes, achats, caisse ni les autres commandes.
+
+**À faire une seule fois :**
+1. Console Firebase → Firestore Database → **Règles** : coller le contenu de `firestore.rules` → **Publier**.
+2. GitHub → dépôt → **Settings → Pages** → Source : **GitHub Actions** (le workflow « Publier le menu client » met la page en ligne).
+
 ## Menu et partage
 Le bouton ☰ en haut à droite ouvre le menu : sections, synchronisation, et
 « Envoyer l'application par WhatsApp » (envoie le fichier d'installation, même sans internet)
