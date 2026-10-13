@@ -35,6 +35,7 @@ const I = {
   horloge: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 22),
   ok: SVG('<path d="m5 12 5 5 9-10"/>', 14),
   okGros: SVG('<path d="m5 12 5 5 9-10"/>', 22),
+  soleil: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   copier: SVG('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>', 18),
 };
 
@@ -176,7 +177,10 @@ function vueMenu() {
       <div class="mark" aria-hidden="true">WH</div>
       <div><b>WON HOUSE</b><span class="statut ${ferme ? "ferme" : ""}"><i></i>${ferme ? "Commandes fermées pour le moment" : "Ouvert · on prend vos commandes"}</span></div>
     </div>
-    <button class="rond" data-vue="mes" aria-label="Mes commandes${nbCmd ? ` (${nbCmd})` : ""}" ${nbCmd ? "" : "hidden"}>${I.ticket}${nbCmd ? `<span class="pastille">${nbCmd}</span>` : ""}</button>
+    <div style="display:flex;gap:8px">
+      <button class="rond" data-acc-ouvrir aria-label="Menu du jour">${I.soleil}</button>
+      <button class="rond" data-vue="mes" aria-label="Mes commandes${nbCmd ? ` (${nbCmd})` : ""}" ${nbCmd ? "" : "hidden"}>${I.ticket}${nbCmd ? `<span class="pastille">${nbCmd}</span>` : ""}</button>
+    </div>
   </header>
   <h1 class="titre">On mange quoi<br>aujourd'hui ?</h1>
   <label class="cherche">${I.cherche}<span class="sr">Chercher</span><input id="q" type="search" value="${esc(ST.q)}" placeholder="Chercher un plat, une boisson…" autocomplete="off"></label>
@@ -557,7 +561,101 @@ document.addEventListener("click", (e) => {
 document.addEventListener("input", (e) => {
   if (e.target.id === "q") { ST.q = e.target.value.slice(0, 40); const l = $("#liste"); if (l) { l.innerHTML = listeHTML(); chargerPhotos(); } }
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ST.fiche) { ST.fiche = null; fiche(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#accueil").innerHTML) fermerAccueil();
+  else if (ST.fiche) { ST.fiche = null; fiche(); }
+});
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-acc-fermer],[data-acc-plat],[data-acc-ouvrir]"); if (!t) return;
+  if (t.dataset.accOuvrir !== undefined) { ouvrirAccueil(); return; }
+  const plat = t.dataset.accPlat;
+  fermerAccueil();
+  if (plat) { const g = groupeDe(plat); if (g) { ST.fiche = { groupe: g.nom, choix: g.variantes.some(v => v.nom === plat) ? plat : "", qte: 1 }; fiche(); } }
+});
+
+/* ---------------- accueil animé : menu du jour + proverbes africains ---------------- */
+// Proverbes relevés sur afrik.com/proverbes et theafricangourmet.com (proverbes africains sur le repas).
+const PROVERBES = [
+  ["Quand un enfant n'a pas faim, il ne connaît pas la maison de son père.", "Côte d'Ivoire", "Vous avez faim ? Maintenant, vous connaissez la maison WON HOUSE."],
+  ["Qui laboure au soleil mangera à l'ombre.", "Nigeria", "Vous avez bien travaillé : asseyez-vous, on s'occupe du reste."],
+  ["Un oignon partagé avec un ami a le goût d'un agneau rôti.", "Proverbe africain", "Commandez pour deux : ce sera encore meilleur."],
+  ["La marmite de la famille n'est jamais trop petite.", "Proverbe africain", "Toute la famille trouvera son plat ici."],
+  ["La poule qui fouille ne dort pas affamée.", "R.D. Congo", "Vous avez cherché, vous avez trouvé : aujourd'hui, pas de ventre vide."],
+  ["Celui qui veut manger le miel doit avoir le courage d'affronter les abeilles.", "R.D. Congo", "Chez nous, pas d'abeilles : un seul toucher suffit."],
+  ["Ce n'est pas la main mais le cœur qui donne.", "Tanzanie", "Ici, chaque plat est préparé avec le cœur."],
+  ["Le pain partagé fait une route solide.", "Proverbe africain", "Invitez un ami à table : la route sera belle."],
+];
+const ACC = { timer: null, i: 0, vu: false };
+const aujourdhui = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const salut = () => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; };
+
+// Plats du jour choisis par le gestionnaire ; sinon le plus vendu et les plats avec photo.
+function platsDuJour() {
+  const gs = groupes().filter(g => g.dispo);
+  const j = ST.menu?.jour;
+  const noms = [];
+  if (j && j.date === aujourdhui() && Array.isArray(j.plats)) {
+    // un plat précis (ex. « Panini 1000 ») : on montre cette taille-là et son prix
+    const choisis = [];
+    j.plats.forEach(n => {
+      const g = gs.find(x => x.variantes.some(v => v.nom === n)); if (!g || noms.includes(g.nom)) return;
+      const v = g.variantes.find(x => x.nom === n);
+      if (!v || !dispo(v)) return;
+      noms.push(g.nom);
+      choisis.push({ ...g, nomAff: v.nom, choix: v.nom, min: Number(v.prix) || 0, multi: false, desc: String(v.desc || "").trim() || g.desc });
+    });
+    if (choisis.length) return { titre: "Menu du jour", plats: choisis.slice(0, 6) };
+  }
+  const v = ST.menu?.vedette ? groupeDe(ST.menu.vedette) : null;
+  if (v && v.dispo) noms.push(v.nom);
+  [...gs].sort((a, b) => (b.photo ? 1 : 0) - (a.photo ? 1 : 0)).forEach(g => { if (noms.length < 4 && !noms.includes(g.nom)) noms.push(g.nom); });
+  return { titre: "À goûter aujourd'hui", plats: noms.map(n => gs.find(g => g.nom === n)).filter(Boolean) };
+}
+function provHTML() {
+  const [t, o, c] = PROVERBES[ACC.i];
+  return `<blockquote>${esc(t)}</blockquote><figcaption>${esc(o)}</figcaption><p class="cta">${esc(c)}</p>`;
+}
+function ouvrirAccueil() {
+  if (!ST.menu) return;
+  const { titre, plats } = platsDuJour();
+  if (!plats.length) return;
+  const ferme = !ST.menu.ouvert;
+  ACC.i = Math.floor(Math.random() * PROVERBES.length);
+  const date = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  document.body.style.overflow = "hidden";
+  $("#accueil").innerHTML = `<div class="acc" role="dialog" aria-modal="true" aria-label="Bienvenue chez WON HOUSE"><div class="acc-in">
+    <button class="acc-x" data-acc-fermer aria-label="Fermer">${I.fermer}</button>
+    <div class="acc-logo a1" aria-hidden="true">
+      <svg class="vapeur" viewBox="0 0 60 30" width="60" height="30" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 28c-4-6 4-9 0-15s4-9 0-12"/><path d="M30 28c-4-6 4-9 0-15s4-9 0-12"/><path d="M42 28c-4-6 4-9 0-15s4-9 0-12"/></svg>
+      <span class="acc-mark">WH</span>
+    </div>
+    <p class="acc-salut a2">${salut()} et bienvenue chez</p>
+    <h1 class="acc-nom a3">WON HOUSE</h1>
+    <div class="acc-titre a4"><span>${esc(titre)}</span><i></i><span class="d">${esc(date)}</span></div>
+    <div class="acc-plats">${plats.map((g, i) => `<button class="acc-plat" style="animation-delay:${(0.85 + i * 0.13).toFixed(2)}s" data-acc-plat="${esc(g.choix || g.nom)}">${phHTML(g.nom, g.photo)}<span class="t"><b>${esc(g.nomAff || g.nom)}</b>${g.desc ? `<span>${esc(g.desc)}</span>` : ""}</span><span class="p">${g.multi ? "<small>dès </small>" : ""}${F(g.min)}</span></button>`).join("")}</div>
+    <figure class="acc-prov" style="animation-delay:${(1.0 + plats.length * 0.13).toFixed(2)}s"><span class="guil" aria-hidden="true">“</span><div id="prov" aria-live="polite">${provHTML()}</div></figure>
+    <div class="acc-bas" style="animation-delay:${(1.15 + plats.length * 0.13).toFixed(2)}s">
+      <button class="gros" data-acc-fermer>${ferme ? "Voir le menu" : "Commander maintenant"}</button>
+      ${ferme ? `<p class="acc-ferme">Les commandes sont fermées pour le moment.</p>` : ""}
+    </div>
+  </div></div>`;
+  chargerPhotos();
+  clearInterval(ACC.timer);
+  ACC.timer = setInterval(() => {
+    const p = document.getElementById("prov"); if (!p) { clearInterval(ACC.timer); return; }
+    p.classList.add("out");
+    setTimeout(() => { ACC.i = (ACC.i + 1) % PROVERBES.length; p.innerHTML = provHTML(); p.classList.remove("out"); }, 450);
+  }, 7000);
+  setTimeout(() => $(".acc .gros")?.focus({ preventScroll: true }), 50);
+}
+function fermerAccueil() {
+  clearInterval(ACC.timer);
+  $("#accueil").innerHTML = "";
+  if (!ST.fiche) document.body.style.overflow = "";
+  ecrire("whc-accueil", aujourdhui());
+}
+
 
 /* ---------------- démarrage ---------------- */
 onSnapshot(doc(fs, "public", "menu"), (s) => {
@@ -566,6 +664,7 @@ onSnapshot(doc(fs, "public", "menu"), (s) => {
   if (ST.vue === "panier") lireForm();
   const actif = document.activeElement && document.activeElement.id === "q";
   render();
+  if (!ACC.vu && s.exists()) { ACC.vu = true; if (lire("whc-accueil") !== aujourdhui() && ST.vue === "menu") ouvrirAccueil(); }
   if (actif) { const q = $("#q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
 }, () => { ST.err = "Menu indisponible. Vérifiez votre connexion internet."; render(); });
 render();

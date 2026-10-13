@@ -78,6 +78,7 @@ button{cursor:pointer}
 .st.nouvelle{background:var(--accent-soft);color:var(--accent)}.st.acceptee{background:var(--warn-soft);color:var(--warn)}.st.prete{background:var(--good-soft);color:var(--good)}.st.servie{background:var(--surface-2);color:var(--muted)}.st.refusee{background:var(--bad-soft);color:var(--bad)}
 .dispo{display:flex;flex-wrap:wrap;gap:8px}
 .dispo button{border:1.5px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 12px;font-weight:700;font-size:13.5px}
+.dispo button.jour{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .dispo button.off{background:var(--bad-soft);border-color:transparent;color:var(--bad);text-decoration:line-through}
 .paydec{background:var(--warn-soft);color:var(--ink);border-radius:12px;padding:9px 11px;margin-top:8px;font-size:14px}
 .paydec small{color:var(--muted)}
@@ -963,6 +964,9 @@ function renderCommandes(){
   ${aTraiter.length?aTraiter.map(cmdCard).join(""):`<div class="empty" style="padding:14px">Aucune nouvelle commande. Une sonnerie vous prévient quand un client commande (application ouverte).</div>`}
   ${enCours.length?`<h2 class="sec">En cours (${enCours.length})</h2>${enCours.map(cmdCard).join("")}`:""}
   ${finies.length?`<h2 class="sec">Terminées${caJour?` · aujourd'hui ${F(caJour)}`:""}</h2>${finies.map(cmdCard).join("")}`:""}
+  <h2 class="sec">Menu du jour</h2>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez les plats du jour : ils s'affichent en grand, avec une animation, quand le client ouvre le menu. À choisir chaque matin (sinon le client voit le plat le plus vendu et les plats avec photo).</p>
+  <div class="dispo">${(()=>{const j=pub&&pub.jour&&pub.jour.date===toISO(new Date())?new Set(pub.jour.plats||[]):new Set();return menuProduits().map(p=>`<button class="${j.has(p.nom)?"jour":""}" data-cmd="jour" data-nom="${esc(p.nom)}" aria-pressed="${j.has(p.nom)}" ${readOnly||!pub?"disabled":""}>${j.has(p.nom)?"★ ":""}${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`;})()}</div>
   <h2 class="sec">Plats disponibles pour les clients</h2>
   <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez un plat épuisé pour le cacher aux clients ; touchez-le encore quand il revient. Les prix viennent de l'onglet Carte.</p>
   <div class="dispo">${menuProduits().map(p=>`<button class="${indispo.has(p.nom)?"off":""}" data-cmd="dispo" data-nom="${esc(p.nom)}" ${readOnly||!pub?"disabled":""}>${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`}</div>
@@ -997,6 +1001,7 @@ async function cmdAction(b){
   const a=b.dataset.cmd, id=b.dataset.id, c=(S.cmds||[]).find(x=>x.id===id);
   if(readOnly) return;
   if(a==="ouvrir"&&S.pub){O().publishMenu({ouvert:!S.pub.ouvert});toast(S.pub.ouvert?"Commandes fermées":"Commandes ouvertes");}
+  else if(a==="jour"&&S.pub){const today=toISO(new Date());const set=new Set(S.pub.jour&&S.pub.jour.date===today?(S.pub.jour.plats||[]):[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({jour:{date:today,plats:[...set].slice(0,8)}});toast(set.has(n)?"★ "+n+" : au menu du jour":n+" : retiré du menu du jour");}
   else if(a==="dispo"&&S.pub){const set=new Set(S.pub.indispo||[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({indispo:[...set]});toast(set.has(n)?n+" : épuisé":n+" : de nouveau disponible");}
   else if(a==="tel"){const v=(document.getElementById("pub-tel")?.value||"").trim().slice(0,30);O().publishMenu({tel:v});toast("Téléphone enregistré");}
   else if(a==="lien") lienSheet();
