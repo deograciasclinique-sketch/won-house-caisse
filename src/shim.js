@@ -245,6 +245,12 @@ async function loadInto(img, id) {
   if (photoCache[id]) { img.src = photoCache[id]; waitingImgs.delete(img); }
   else waitingImgs.add(img); // pas encore disponible (hors ligne) : on réessaiera au retour d'internet
 }
+// Miniatures des photos de plats (onglet Carte) : <img data-dp="photo-…">
+async function loadDish(img) {
+  const k = img.dataset.dp; if (!k || img.dataset.dpOk === k) return;
+  if (!photoCache[k]) { try { const s = await getDoc(doc(fs, "public", k)); if (s.exists()) photoCache[k] = s.data().data; } catch (e) {} }
+  if (photoCache[k]) { img.src = photoCache[k]; img.dataset.dpOk = k; }
+}
 function retryImages() { waitingImgs.forEach(img => { if (!img.isConnected) waitingImgs.delete(img); else loadInto(img, img.dataset.whBlob); }); }
 async function hydrate(img) {
   const src = img.getAttribute("src") || "";
@@ -254,9 +260,9 @@ async function hydrate(img) {
   loadInto(img, id);
 }
 function watchImages() {
-  const scan = root => root.querySelectorAll && root.querySelectorAll('img[src*="/_blob/"]').forEach(hydrate);
+  const scan = root => { if (!root.querySelectorAll) return; root.querySelectorAll('img[src*="/_blob/"]').forEach(hydrate); root.querySelectorAll("img[data-dp]").forEach(loadDish); };
   new MutationObserver(ms => ms.forEach(m => {
-    m.addedNodes.forEach(n => { if (n.nodeType === 1) { if (n.tagName === "IMG") hydrate(n); scan(n); } });
+    m.addedNodes.forEach(n => { if (n.nodeType === 1) { if (n.tagName === "IMG") { hydrate(n); if (n.dataset.dp) loadDish(n); } scan(n); } });
     if (m.type === "attributes" && m.target.tagName === "IMG") hydrate(m.target);
   })).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
   scan(document);
@@ -333,6 +339,20 @@ window.__whOrders = {
     next(s.exists() ? s.data() : null);
   }, () => next(undefined)) : () => {}),
   publishMenu: (menu) => write(() => setDoc(doc(fs, "public", "menu"), { ...menu, majAt: Date.now() }, { merge: true })),
+  // Photo d'un plat pour le menu des clients : recadrée en carré, réduite à 640 px,
+  // rangée dans « public/photo-… » (lisible par les clients, modifiable par l'équipe seulement).
+  dishPhoto: async (blob) => {
+    const img = await createImageBitmap(blob);
+    const s = Math.min(img.width, img.height);
+    const c = document.createElement("canvas"); c.width = c.height = Math.min(640, s);
+    c.getContext("2d").drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, c.width, c.height);
+    const data = c.toDataURL("image/jpeg", 0.72);
+    const key = "photo-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    photoCache[key] = data;
+    await write(() => setDoc(doc(fs, "public", key), { data, at: Date.now() }));
+    return key;
+  },
+  dropDishPhoto: (key) => (/^photo-[a-z0-9]+$/.test(key || "") ? write(() => deleteDoc(doc(fs, "public", key))) : Promise.resolve()),
   qr: (text) => QRCode.toDataURL(text, { margin: 1, width: 480, color: { dark: "#3A0B12", light: "#FFFFFF" } }),
   share: (text) => {
     if (Capacitor.isNativePlatform()) return AppShare.shareText({ text });

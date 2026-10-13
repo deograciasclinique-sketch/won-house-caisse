@@ -157,6 +157,9 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
 .trow input.n{flex:1}
 .trow input.p{width:92px;text-align:right}
 .icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;flex:none;color:var(--muted)}
+.icon-btn.ph{width:44px;height:44px;padding:0;overflow:hidden;color:var(--accent);border-style:dashed}
+.icon-btn.ph.on{border-style:solid}
+.icon-btn.ph img{width:100%;height:100%;object-fit:cover;display:block}
 
 /* tirer pour actualiser */
 .ptr{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:15;width:44px;height:44px;margin-left:-22px;border-radius:50%;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.18);display:grid;place-items:center;color:var(--accent);transform:translateY(-70px);opacity:0;pointer-events:none}
@@ -595,8 +598,8 @@ function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const n=x/p;
 function renderCarte(){
   const t=S.tarifs;
   return `${banner()}
-  <p style="color:var(--muted);font-size:13.5px;margin:4px 2px 12px">Les prix de vente. Un changement de prix s'applique aux nouvelles ventes seulement : les ventes déjà notées gardent leur prix.</p>
-  <div class="list" id="tarifs">${(t.produits||[]).map((p,i)=>`<div class="trow"><input class="n" id="tn${i}" value="${esc(p.nom)}" aria-label="Nom du produit" ${readOnly?"disabled":""}><input class="p num" id="tp${i}" inputmode="numeric" value="${p.prix}" aria-label="Prix" ${readOnly?"disabled":""}><button class="icon-btn" data-del-t="${i}" aria-label="Supprimer" ${readOnly?"disabled":""}>✕</button></div>`).join("")}</div>
+  <p style="color:var(--muted);font-size:13.5px;margin:4px 2px 12px">Les prix de vente. Un changement de prix s'applique aux nouvelles ventes seulement : les ventes déjà notées gardent leur prix. Touchez 📷 pour photographier un plat : la photo apparaît sur le menu des clients.</p>
+  <div class="list" id="tarifs">${(t.produits||[]).map((p,i)=>`<div class="trow"><input class="n" id="tn${i}" value="${esc(p.nom)}" aria-label="Nom du produit" ${readOnly?"disabled":""}><input class="p num" id="tp${i}" inputmode="numeric" value="${p.prix}" aria-label="Prix" ${readOnly?"disabled":""}><button class="icon-btn ph ${p.photo?"on":""}" data-photo-t="${i}" aria-label="${p.photo?"Changer la photo":"Prendre la photo"} de ${esc(p.nom||"ce plat")}" ${readOnly?"disabled":""}>${p.photo?`<img data-dp="${esc(p.photo)}" alt="">`:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</button><button class="icon-btn" data-del-t="${i}" aria-label="Supprimer" ${readOnly?"disabled":""}>✕</button></div>`).join("")}</div>
   <div class="actions"><button class="btn ghost" data-act="add-t" ${readOnly?"disabled":""}>+ Produit</button><button class="btn primary" data-act="save-t" ${readOnly?"disabled":""}>Enregistrer la carte</button></div>
   ${window.__extraCarte?window.__extraCarte():""}
   <h2 class="sec">Bien tenir la caisse</h2>
@@ -818,7 +821,8 @@ document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.cl
 view.addEventListener("click",e=>{
   const pvw=e.target.closest("[data-view]"); if(pvw){e.stopPropagation();viewPhoto(pvw.dataset.view,pvw.dataset.cap);return;}
   const c=e.target.closest("[data-cmd]"); if(c){cmdAction(c);return;}
-  const t=e.target.closest("[data-act],[data-edit-v],[data-edit-a],[data-goto],[data-del-t]"); if(!t) return;
+  const t=e.target.closest("[data-act],[data-edit-v],[data-edit-a],[data-goto],[data-del-t],[data-photo-t]"); if(!t) return;
+  if(t.dataset.photoT!==undefined){photoPlat(Number(t.dataset.photoT));return;}
   const a=t.dataset.act;
   if(a==="prev"){S.date=addDays(S.date,-1);S.anim=true;render();}
   else if(a==="next"){S.date=addDays(S.date,1);S.anim=true;render();}
@@ -839,7 +843,35 @@ view.addEventListener("change",async e=>{
   if(e.target.id==="snap-v"||e.target.id==="snap-a"){const f=e.target.files[0];if(!f)return;const kind=e.target.id;
     try{const r=await uploadPhoto(f,kind==="snap-v"?"Vente":"Achat"); kind==="snap-v"?venteSheet(null,r):achatSheet(null,r);}catch(err){toast("Photo non envoyée. Vérifiez la connexion et réessayez.");}
     return;}if(e.target.id==="pickdate"&&e.target.value){S.date=e.target.value;S.anim=true;render();}});
-function readTarifsForm(){const out={...S.tarifs,produits:[]};(S.tarifs.produits||[]).forEach((p,i)=>{const n=document.getElementById("tn"+i),pr=document.getElementById("tp"+i);out.produits.push({nom:n?n.value:p.nom,prix:pr?(parseInt(pr.value)||0):p.prix});});return out;}
+function readTarifsForm(){const out={...S.tarifs,produits:[]};(S.tarifs.produits||[]).forEach((p,i)=>{const n=document.getElementById("tn"+i),pr=document.getElementById("tp"+i);out.produits.push({nom:n?n.value:p.nom,prix:pr?(parseInt(pr.value)||0):p.prix,...(p.photo?{photo:p.photo}:{})});});return out;}
+// Photo d'un plat pour le menu des clients (onglet Carte → 📷).
+function choisirFichier(){return new Promise(ok=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.setAttribute("capture","environment");inp.onchange=()=>ok(inp.files&&inp.files[0]||null);inp.click();});}
+async function photoPlat(i){
+  if(readOnly) return;
+  if(!O()||!O().dishPhoto||S.mode!=="live"){toast("Connectez-vous au compte du restaurant pour ajouter des photos.");return;}
+  const tt=readTarifsForm(); const p=tt.produits[i];
+  if(!p||!String(p.nom).trim()){toast("Écrivez d'abord le nom du plat.");return;}
+  let f=null;
+  const live=window.__whCamera&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
+  if(live) f=await window.__whCamera(String(p.nom).trim());
+  if(!live||f==="fallback") f=await choisirFichier();
+  if(!f) return;
+  try{
+    const ancienne=p.photo; const key=await O().dishPhoto(f);
+    p.photo=key; tt.produits=tt.produits.filter(x=>String(x.nom).trim());
+    await saveTarifs(tt);
+    if(ancienne&&ancienne!==key) O().dropDishPhoto(ancienne).catch(()=>{});
+    toast("📷 Photo ajoutée au menu des clients");
+  }catch(err){toast("Photo non enregistrée. Réessayez.");}
+}
+// Plat le plus vendu des 30 derniers jours (mis en avant sur le menu des clients).
+function vedette(){
+  const since=toISO(new Date(Date.now()-30*864e5)); const q={};
+  Object.values(S.days||{}).forEach(d=>{if(d&&d.date>=since)normList(d.ventes).forEach(v=>{q[v.produit]=(q[v.produit]||0)+(Number(v.qte)||0);});});
+  const noms=new Set(menuProduits().map(p=>p.nom)); let best="",n=0;
+  for(const k in q) if(noms.has(k)&&q[k]>n){best=k;n=q[k];}
+  return best;
+}
 
 /* ---------- commandes des clients ---------- */
 const O=()=>window.__whOrders;
@@ -857,15 +889,16 @@ function startOrders(){
   });
   O().watchMenu(m=>{const first=S.pub===undefined;S.pub=m;if(m===null)syncMenu(true);else if(first)syncMenu();if(S.tab==="commandes")render();});
 }
-function menuProduits(){return (S.tarifs.produits||[]).filter(p=>p&&p.nom&&String(p.nom).trim()).map(p=>({nom:String(p.nom).trim(),prix:Number(p.prix)||0}));}
+function menuProduits(){return (S.tarifs.produits||[]).filter(p=>p&&p.nom&&String(p.nom).trim()).map(p=>({nom:String(p.nom).trim(),prix:Number(p.prix)||0,...(p.photo?{photo:String(p.photo)}:{})}));}
 // Garde le menu public identique à la carte (plats et prix).
 function syncMenu(create){
   if(!O()||S.mode!=="live"||readOnly||S.pub===undefined) return;
   const produits=menuProduits();
-  if(create||!S.pub){O().publishMenu({produits,ouvert:true,indispo:[],tel:""});return;}
-  if(JSON.stringify(S.pub.produits||[])!==JSON.stringify(produits)){
+  const top=vedette();
+  if(create||!S.pub){O().publishMenu({produits,vedette:top,ouvert:true,indispo:[],tel:""});return;}
+  if(JSON.stringify(S.pub.produits||[])!==JSON.stringify(produits)||(S.pub.vedette||"")!==top){
     const noms=new Set(produits.map(p=>p.nom));
-    O().publishMenu({produits,indispo:(S.pub.indispo||[]).filter(n=>noms.has(n))});
+    O().publishMenu({produits,vedette:top,indispo:(S.pub.indispo||[]).filter(n=>noms.has(n))});
   }
 }
 function updateBadge(){const b=document.getElementById("cmd-badge");if(!b)return;const n=(S.cmds||[]).filter(c=>c.statut==="nouvelle").length;b.hidden=!n;b.textContent=n;}
