@@ -190,6 +190,7 @@ function vueMenu() {
   </div>` : ""}
   ${ferme ? `<div class="bandeau ko">Les commandes sont fermées pour le moment. Vous pouvez regarder le menu.</div>` : ""}
   ${TABLE_URL ? `<div class="bandeau info">Vous êtes à la table <b>${esc(TABLE_URL)}</b></div>` : ""}
+  ${blocInstaller()}
   <div id="liste">${listeHTML()}</div>
   ${ST.menu.tel ? `<div class="pad" style="margin-top:22px"><a class="lien" href="tel:${esc(ST.menu.tel)}">${I.tel} Appeler le restaurant · ${esc(ST.menu.tel)}</a></div>` : ""}`;
 }
@@ -563,7 +564,8 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if ($("#accueil").innerHTML) fermerAccueil();
+  if ($("#aide").innerHTML) fermerAide();
+  else if ($("#accueil").innerHTML) fermerAccueil();
   else if (ST.fiche) { ST.fiche = null; fiche(); }
 });
 document.addEventListener("click", (e) => {
@@ -638,6 +640,7 @@ function ouvrirAccueil() {
     <div class="acc-bas" style="animation-delay:${(1.15 + plats.length * 0.13).toFixed(2)}s">
       <button class="gros" data-acc-fermer>${ferme ? "Voir le menu" : "Commander maintenant"}</button>
       ${ferme ? `<p class="acc-ferme">Les commandes sont fermées pour le moment.</p>` : ""}
+      ${estInstallee() ? "" : `<button class="acc-inst" data-installer><img src="icon-192.png" alt="" width="24" height="24" style="border-radius:7px"> Mettre l'icône WON HOUSE sur mon téléphone</button>`}
     </div>
   </div></div>`;
   chargerPhotos();
@@ -656,6 +659,64 @@ function fermerAccueil() {
   ecrire("whc-accueil", aujourdhui());
 }
 
+
+
+/* ---------------- icône WON HOUSE sur l'écran d'accueil (application web installable) ---------------- */
+const INST = { evt: null };
+const estInstallee = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+const estIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const dansWhatsApp = () => /wv\)|FBAN|FBAV|Instagram|WhatsApp/i.test(navigator.userAgent);
+function peutProposer() {
+  if (estInstallee()) return false;
+  const x = Number(lire("whc-inst-x")) || 0;
+  return Date.now() - x > 5 * 864e5; // « plus tard » : on repropose dans 5 jours
+}
+function blocInstaller() {
+  if (!peutProposer()) return "";
+  return `<div class="inst" role="region" aria-label="Installer WON HOUSE">
+    <img src="icon-192.png" alt="" width="48" height="48">
+    <span class="t"><b>Installer WON HOUSE</b><span>L'icône sur votre écran d'accueil</span></span>
+    <button class="go" data-installer>${INST.evt ? "Installer" : "Comment ?"}</button>
+    <button class="x" data-inst-x aria-label="Plus tard">${I.fermer}</button>
+  </div>`;
+}
+async function installer() {
+  if (INST.evt) {
+    const e = INST.evt; INST.evt = null;
+    try { e.prompt(); const r = await e.userChoice; if (r && r.outcome === "accepted") { toast("WON HOUSE est sur votre écran d'accueil"); } } catch (err) { aideInstaller(); }
+    render(); return;
+  }
+  aideInstaller();
+}
+function aideInstaller() {
+  const ios = estIOS(), wa = dansWhatsApp();
+  const etapes = ios
+    ? [`Ouvrez ce menu dans <b>Safari</b>.`, `Touchez le bouton <span class="k">Partager</span> (le carré avec une flèche vers le haut), en bas de l'écran.`, `Choisissez <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.`]
+    : [...(wa ? [`Vous êtes dans WhatsApp : touchez <span class="k">⋮</span> en haut à droite, puis <b>« Ouvrir dans Chrome »</b>.`] : []),
+       `Dans <b>Chrome</b>, touchez <span class="k">⋮</span> en haut à droite.`,
+       `Choisissez <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>.`,
+       `Confirmez : l'icône WON HOUSE apparaît avec vos autres applications.`];
+  document.body.style.overflow = "hidden";
+  $("#aide").innerHTML = `<div class="voile" data-aide-voile><div class="feuille aide" role="dialog" aria-modal="true" aria-label="Ajouter l'icône WON HOUSE">
+    <div class="poignee" aria-hidden="true"></div>
+    <div class="pad" style="padding-top:16px;display:flex;align-items:center;gap:14px">
+      <img src="icon-192.png" alt="" width="56" height="56" style="border-radius:15px">
+      <div style="flex:1"><h2 class="disp" style="margin:0;font-size:22px">Ajouter l'icône WON HOUSE</h2><span class="note" style="margin:0">Rien à télécharger, aucune autorisation à donner.</span></div>
+    </div>
+    <div class="pad"><ol>${etapes.map(t => `<li>${t}</li>`).join("")}</ol></div>
+    <div class="pad" style="margin-top:20px"><button class="gros" style="width:100%" data-aide-fermer>J'ai compris</button></div>
+  </div></div>`;
+}
+function fermerAide() { $("#aide").innerHTML = ""; if (!ST.fiche && !$("#accueil").innerHTML) document.body.style.overflow = ""; }
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); INST.evt = e; if (ST.vue === "menu") render(); });
+window.addEventListener("appinstalled", () => { INST.evt = null; toast("WON HOUSE est sur votre écran d'accueil"); render(); });
+document.addEventListener("click", (e) => {
+  const t = e.target;
+  if (t.matches("[data-aide-voile]") || t.closest("[data-aide-fermer]")) { fermerAide(); return; }
+  if (t.closest("[data-installer]")) { if (t.closest(".acc")) fermerAccueil(); installer(); return; }
+  if (t.closest("[data-inst-x]")) { ecrire("whc-inst-x", String(Date.now())); render(); }
+});
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 
 /* ---------------- démarrage ---------------- */
 onSnapshot(doc(fs, "public", "menu"), (s) => {
