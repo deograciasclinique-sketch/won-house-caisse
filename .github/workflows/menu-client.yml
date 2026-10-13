@@ -32,9 +32,11 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
+          # même contenu que le site publié depuis la branche : menu à la racine ET dans client/
+          mkdir -p _site/client && cp -r client/. _site/ && cp -r client/. _site/client/ && touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: client
+          path: _site
       - id: deploy
         uses: actions/deploy-pages@v4
