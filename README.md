@@ -33,7 +33,7 @@ Les clients voient **uniquement le menu** et **commandent**, sans installer d'ap
 
 **À faire une seule fois :**
 1. Console Firebase → Firestore Database → **Règles** : coller le contenu de `firestore.rules` → **Publier**.
-2. GitHub → dépôt → **Settings → Pages** → Source : **GitHub Actions** (le workflow « Publier le menu client » met la page en ligne).
+2. (Facultatif) GitHub → dépôt → **Settings → Pages** → Source : **GitHub Actions**. Sans ce réglage, le menu marche aussi : le lien ouvre `index.html` à la racine, qui mène au dossier `client/` (déjà construit et enregistré dans le dépôt). Après une modification de `src/client.js`, lancer `npm run build` et enregistrer aussi `client/client.js`.
 
 ## Menu et partage
 Le bouton ☰ en haut à droite ouvre le menu : sections, synchronisation, et

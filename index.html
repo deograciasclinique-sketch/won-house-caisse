@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#17150F">
+<title>WON HOUSE · Menu et commande</title>
+<link rel="icon" type="image/png" href="client/icon-192.png">
+<script>
+  // Le menu des clients est dans le dossier client/ : on y va tout de suite,
+  // en gardant ?table=5 (QR code des tables) et le reste du lien.
+  location.replace("client/" + location.search + location.hash);
+</script>
+<noscript><meta http-equiv="refresh" content="0; url=client/"></noscript>
+<style>
+  html,body{margin:0;height:100%;background:#17150F;color:#FBFAF7;font-family:system-ui,sans-serif}
+  body{display:grid;place-items:center;text-align:center}
+  a{color:#F59E0B;font-weight:700}
+</style>
+</head>
+<body>
+  <div><img src="client/icon-192.png" alt="" width="72" height="72" style="border-radius:18px"><p>Ouverture du menu WON HOUSE…</p><p><a href="client/">Ouvrir le menu</a></p></div>
+</body>
+</html>
