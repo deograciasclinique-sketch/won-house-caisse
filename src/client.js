@@ -120,6 +120,7 @@ function groupes() {
     g.min = Math.min(...(libres.length ? libres : g.variantes).map(v => Number(v.prix) || 0));
     g.multi = g.variantes.length > 1;
     g.photo = (g.variantes.find(v => /^photo-[a-z0-9]+$/.test(v.photo || "")) || {}).photo || "";
+    g.desc = String((g.variantes.find(v => v.desc && String(v.desc).trim()) || {}).desc || "").trim();
     g.qte = g.variantes.reduce((t, v) => t + (ST.panier[v.nom] || 0), 0);
     g.rub = rubrique(g.nom);
     return g;
@@ -222,7 +223,7 @@ function carteHTML(g) {
   return `<div class="carte ${g.dispo ? "" : "off"}">
     <button class="ouvrir" data-ouvrir="${esc(g.nom)}" aria-label="${esc(g.nom)}, ${g.multi ? "dès " : ""}${F(g.min)}${g.dispo ? "" : ", épuisé"}">${phHTML(g.nom, g.photo, extra)}</button>
     <div class="bas">
-      <div><span class="nom">${esc(g.nom)}</span><span class="prix">${g.multi ? "<small>dès </small>" : ""}${F(g.min)}</span></div>
+      <div style="min-width:0"><span class="nom">${esc(g.nom)}</span>${g.desc ? `<span class="compo-c">${esc(g.desc)}</span>` : ""}<span class="prix">${g.multi ? "<small>dès </small>" : ""}${F(g.min)}</span></div>
       ${g.dispo && !ferme ? `<button class="ajout" data-${g.multi ? "ouvrir" : "plus"}="${esc(g.multi ? g.nom : g.variantes[0].nom)}" aria-label="Ajouter ${esc(g.nom)}">${I.plus}</button>` : ""}
     </div>
   </div>`;
@@ -243,6 +244,7 @@ function fiche() {
       <div class="poignee" aria-hidden="true"></div>
       <div style="position:relative">${phHTML(g.nom, g.photo)}<button class="fermer" data-fermer aria-label="Fermer">${I.fermer}</button></div>
       <div class="fiche-tete"><h2>${esc(g.nom)}</h2><span class="prix">${F(choix.prix)}</span></div>
+      ${(String(choix.desc || "").trim() || g.desc) ? `<p class="compo pad">${esc(String(choix.desc || "").trim() || g.desc)}</p>` : ""}
       ${g.multi ? `<div class="pad"><span class="lab">Choisir la taille</span><div class="tailles">${g.variantes.map(v => `<button class="taille ${v.nom === choix.nom ? "on" : ""}" data-taille="${esc(v.nom)}" aria-pressed="${v.nom === choix.nom}" ${dispo(v) ? "" : "disabled"}>${esc(v.label)}</button>`).join("")}</div></div>` : ""}
       ${!g.dispo ? `<p class="note pad">Épuisé aujourd'hui. Revenez bientôt !</p>` : ferme ? `<p class="note pad">Les commandes sont fermées pour le moment.</p>` : ""}
       ${ok ? `<div class="fiche-bas">
