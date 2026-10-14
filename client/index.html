@@ -278,6 +278,50 @@ h1.titre{margin:18px 20px 14px;font-family:var(--display);font-weight:800;font-s
   @keyframes accVapeur{0%{stroke-dashoffset:40;opacity:0}40%{opacity:1}100%{stroke-dashoffset:-40;opacity:0}}
   @keyframes accPouls{0%,100%{box-shadow:0 0 0 0 rgba(194,65,12,.55)}50%{box-shadow:0 0 0 10px rgba(194,65,12,0)}}
 }
+/* vitrine animée : les plats défilent en boucle */
+.vit{margin:4px 16px 20px}
+.acc .vit{margin:20px 0 0}
+.vit-cadre{position:relative;aspect-ratio:4/3;max-height:400px;width:100%;border-radius:26px;overflow:hidden;background:#2A1A10;box-shadow:0 14px 34px rgba(60,25,10,.28)}
+.vit-s{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .9s ease,visibility 0s .9s;display:flex;align-items:flex-end}
+.vit-s.on{opacity:1;visibility:visible;z-index:1;transition:opacity .9s ease}
+.vit-s img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .4s}
+.vit-s img.ok{opacity:1}
+.vit-emo{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);font-size:96px;line-height:1;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
+.vit-s::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,10,4,0) 30%,rgba(20,10,4,.85) 100%);z-index:1}
+.vit-txt{position:relative;z-index:2;padding:18px 18px 22px;color:#FFF8EE;display:flex;flex-direction:column;gap:4px;width:100%;box-sizing:border-box}
+.vit-tag{align-self:flex-start;background:#F59E0B;color:#2A1A10;font-weight:800;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:99px}
+.vit-nom{font-family:var(--display);font-weight:800;font-size:28px;line-height:1.05;letter-spacing:-.01em;margin-top:4px}
+.vit-desc{font-size:13.5px;color:#F3E6D3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.vit-bas{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+.vit-prix{font-family:var(--display);font-weight:800;font-size:24px;color:#FBBF24;white-space:nowrap}
+.vit-prix small{font-family:var(--body);font-weight:500;font-size:12px;color:#F3E6D3}
+.vit-go{border:0;border-radius:99px;padding:12px 18px;min-height:44px;background:#FFF8EE;color:#7A1726;font-weight:800;font-size:15px;cursor:pointer}
+.vit-pts{position:absolute;top:14px;right:14px;z-index:3;display:flex;gap:5px}
+.vit-pts i{width:7px;height:7px;border-radius:99px;background:rgba(255,248,238,.45);transition:width .3s}
+.vit-pts i.on{width:20px;background:#FFF8EE}
+/* motifs africains (bogolan, wax, kente) quand le plat n'a pas encore de photo */
+.motif1{background:repeating-linear-gradient(45deg,rgba(0,0,0,.18) 0 6px,transparent 6px 18px),radial-gradient(circle at 30% 30%,#C2410C,#7A2E0E)}
+.motif2{background:radial-gradient(circle,rgba(255,236,200,.22) 3px,transparent 4px) 0 0/22px 22px,linear-gradient(135deg,#8C1D2B,#B45309)}
+.motif3{background:repeating-linear-gradient(90deg,rgba(255,200,80,.25) 0 10px,transparent 10px 22px,rgba(20,90,50,.35) 22px 30px,transparent 30px 44px),linear-gradient(160deg,#5B3A1A,#B7791F)}
+.vit-prov{margin:12px 0 0;padding:16px 16px 14px 18px;border-radius:20px;background:#FFF6E6;border:1px solid #F3D9A8;position:relative}
+.vit-prov .guil{position:absolute;top:-16px;left:14px;font-family:var(--display);font-weight:800;font-size:56px;line-height:1;color:#D97706}
+.vit-p{transition:opacity .45s ease,transform .45s ease}
+.vit-p.out{opacity:0;transform:translateY(6px)}
+.vit-p blockquote{margin:4px 0 0;font-size:16.5px;line-height:1.4;font-style:italic;font-weight:500;color:#3B2410}
+.vit-p figcaption{margin-top:6px;color:#7A5A34;font-size:12.5px}
+.vit-p figcaption::before{content:"— "}
+.vit-p .cta{margin:8px 0 0;color:#9A3E07;font-weight:800;font-size:14px}
+@media (prefers-reduced-motion:no-preference){
+  .vit-s.on img.ok{animation:vitZoom 6s ease-out both}
+  .vit-s.on .vit-emo{animation:vitFlotte 3s ease-in-out infinite}
+  .vit-s.on .vit-txt>*{animation:vitMonte .6s cubic-bezier(.2,.8,.2,1) both}
+  .vit-s.on .vit-nom{animation-delay:.1s}.vit-s.on .vit-desc{animation-delay:.2s}.vit-s.on .vit-bas{animation-delay:.3s}
+  .vit-go{animation:vitPouls 2.2s ease-in-out infinite}
+  @keyframes vitZoom{from{transform:scale(1)}to{transform:scale(1.12)}}
+  @keyframes vitFlotte{50%{transform:translate(-50%,-58%) rotate(-4deg)}}
+  @keyframes vitMonte{from{opacity:0;transform:translateY(14px)}}
+  @keyframes vitPouls{0%,100%{box-shadow:0 0 0 0 rgba(255,248,238,.6)}50%{box-shadow:0 0 0 9px rgba(255,248,238,0)}}
+}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 <script src="config.js"></script>

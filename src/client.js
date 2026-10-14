@@ -183,6 +183,7 @@ function vueMenu() {
     </div>
   </header>
   <h1 class="titre">On mange quoi<br>aujourd'hui ?</h1>
+  ${ST.q.trim() ? "" : vitrineHTML()}
   <label class="cherche">${I.cherche}<span class="sr">Chercher</span><input id="q" type="search" value="${esc(ST.q)}" placeholder="Chercher un plat, une boisson…" autocomplete="off"></label>
   ${presentes.length > 1 ? `<div class="chips" role="tablist" aria-label="Rubriques">
     <button class="chip ${ST.rub === "tout" ? "on" : ""}" role="tab" aria-selected="${ST.rub === "tout"}" data-rub="tout">Tout</button>
@@ -683,10 +684,70 @@ function platsDuJour() {
   [...gs].sort((a, b) => (b.photo ? 1 : 0) - (a.photo ? 1 : 0)).forEach(g => { if (noms.length < 4 && !noms.includes(g.nom)) noms.push(g.nom); });
   return { titre: "À goûter aujourd'hui", plats: noms.map(n => gs.find(g => g.nom === n)).filter(Boolean) };
 }
-function provHTML() {
-  const [t, o, c] = PROVERBES[ACC.i];
+function provHTML(i = ACC.i) {
+  const [t, o, c] = PROVERBES[i];
   return `<blockquote>${esc(t)}</blockquote><figcaption>${esc(o)}</figcaption><p class="cta">${esc(c)}</p>`;
 }
+/* ---------------- vitrine animée : les plats défilent en boucle + proverbes ----------------
+   Toujours visible en haut du menu (et dans l'accueil) : chaque plat passe en grand,
+   photo qui s'anime doucement, nom, composition, prix et bouton « Je commande » ;
+   un proverbe africain change toutes les deux images. */
+const VIT = { i: 0, k: 0, n: 0, p: Math.floor(Math.random() * PROVERBES.length) };
+function vitrineHTML() {
+  if (!ST.menu) return "";
+  const { titre, plats } = platsDuJour();
+  if (!plats.length) return "";
+  VIT.n = plats.length; VIT.i = VIT.i % plats.length;
+  const ferme = !ST.menu.ouvert;
+  return `<section class="vit" aria-label="${esc(titre)}">
+    <div class="vit-cadre">
+      ${plats.map((g, i) => `<div class="vit-s motif${1 + hash(g.nom) % 3} ${i === VIT.i ? "on" : ""}" aria-hidden="${i === VIT.i ? "false" : "true"}">
+        <span class="vit-emo" aria-hidden="true">${ico(g.nom)}</span>
+        ${cleOk(g.photo) ? `<img data-ph="${esc(g.photo)}" alt="">` : ""}
+        <div class="vit-txt">
+          <span class="vit-tag">${esc(titre)}</span>
+          <b class="vit-nom">${esc(g.nomAff || g.nom)}</b>
+          ${g.desc ? `<span class="vit-desc">${esc(g.desc)}</span>` : ""}
+          <span class="vit-bas"><span class="vit-prix">${g.multi ? "<small>dès </small>" : ""}${F(g.min)}</span>${ferme ? "" : `<button class="vit-go" data-vit-plat="${esc(g.choix || g.nom)}" ${i === VIT.i ? "" : 'tabindex="-1"'}>Je commande</button>`}</span>
+        </div>
+      </div>`).join("")}
+      ${plats.length > 1 ? `<div class="vit-pts" aria-hidden="true">${plats.map((_, i) => `<i class="${i === VIT.i ? "on" : ""}"></i>`).join("")}</div>` : ""}
+    </div>
+    <figure class="vit-prov"><span class="guil" aria-hidden="true">“</span><div class="vit-p" aria-live="polite">${provHTML(VIT.p)}</div></figure>
+  </section>`;
+}
+function vitTick() {
+  const all = document.querySelectorAll(".vit");
+  if (!all.length) return;
+  VIT.k++;
+  if (VIT.n > 1) {
+    VIT.i = (VIT.i + 1) % VIT.n;
+    all.forEach((v) => {
+      v.querySelectorAll(".vit-s").forEach((sl, i) => {
+        const on = i === VIT.i;
+        sl.classList.toggle("on", on); sl.setAttribute("aria-hidden", on ? "false" : "true");
+        const b = sl.querySelector(".vit-go"); if (b) { if (on) b.removeAttribute("tabindex"); else b.setAttribute("tabindex", "-1"); }
+      });
+      v.querySelectorAll(".vit-pts i").forEach((d, i) => d.classList.toggle("on", i === VIT.i));
+    });
+  }
+  if (VIT.k % 2 === 0) {
+    VIT.p = (VIT.p + 1) % PROVERBES.length;
+    document.querySelectorAll(".vit-p").forEach((p) => {
+      p.classList.add("out");
+      setTimeout(() => { p.innerHTML = provHTML(VIT.p); p.classList.remove("out"); }, 450);
+    });
+  }
+}
+setInterval(vitTick, 4500);
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-vit-plat]"); if (!b) return;
+  const plat = b.dataset.vitPlat;
+  if (b.closest(".acc")) fermerAccueil();
+  const g = groupeDe(plat);
+  if (g) { ST.fiche = { groupe: g.nom, choix: g.variantes.some(v => v.nom === plat) ? plat : "", qte: 1 }; fiche(); }
+});
+
 function ouvrirAccueil() {
   if (!ST.menu) return;
   const { titre, plats } = platsDuJour();
@@ -697,28 +758,16 @@ function ouvrirAccueil() {
   document.body.style.overflow = "hidden";
   $("#accueil").innerHTML = `<div class="acc" role="dialog" aria-modal="true" aria-label="Bienvenue chez WON HOUSE"><div class="acc-in">
     <button class="acc-x" data-acc-fermer aria-label="Fermer">${I.fermer}</button>
-    <div class="acc-logo a1" aria-hidden="true">
-      <svg class="vapeur" viewBox="0 0 60 30" width="60" height="30" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 28c-4-6 4-9 0-15s4-9 0-12"/><path d="M30 28c-4-6 4-9 0-15s4-9 0-12"/><path d="M42 28c-4-6 4-9 0-15s4-9 0-12"/></svg>
-      <span class="acc-mark">WH</span>
-    </div>
     <p class="acc-salut a2">${salut()} et bienvenue chez</p>
     <h1 class="acc-nom a3">WON HOUSE</h1>
-    <div class="acc-titre a4"><span>${esc(titre)}</span><i></i><span class="d">${esc(date)}</span></div>
-    <div class="acc-plats">${plats.map((g, i) => `<button class="acc-plat" style="animation-delay:${(0.85 + i * 0.13).toFixed(2)}s" data-acc-plat="${esc(g.choix || g.nom)}">${phHTML(g.nom, g.photo)}<span class="t"><b>${esc(g.nomAff || g.nom)}</b>${g.desc ? `<span>${esc(g.desc)}</span>` : ""}</span><span class="p">${g.multi ? "<small>dès </small>" : ""}${F(g.min)}</span></button>`).join("")}</div>
-    <figure class="acc-prov" style="animation-delay:${(1.0 + plats.length * 0.13).toFixed(2)}s"><span class="guil" aria-hidden="true">“</span><div id="prov" aria-live="polite">${provHTML()}</div></figure>
-    <div class="acc-bas" style="animation-delay:${(1.15 + plats.length * 0.13).toFixed(2)}s">
+    <div class="acc-vit a4">${vitrineHTML()}</div>
+    <div class="acc-bas">
       <button class="gros" data-acc-fermer>${ferme ? "Voir le menu" : "Commander maintenant"}</button>
       ${ferme ? `<p class="acc-ferme">Les commandes sont fermées pour le moment.</p>` : ""}
       ${estInstallee() ? "" : `<button class="acc-inst" data-installer><img src="icon-192.png" alt="" width="24" height="24" style="border-radius:7px"> Mettre l'icône WON HOUSE sur mon téléphone</button>`}
     </div>
   </div></div>`;
   chargerPhotos();
-  clearInterval(ACC.timer);
-  ACC.timer = setInterval(() => {
-    const p = document.getElementById("prov"); if (!p) { clearInterval(ACC.timer); return; }
-    p.classList.add("out");
-    setTimeout(() => { ACC.i = (ACC.i + 1) % PROVERBES.length; p.innerHTML = provHTML(); p.classList.remove("out"); }, 450);
-  }, 7000);
   setTimeout(() => $(".acc .gros")?.focus({ preventScroll: true }), 50);
 }
 function fermerAccueil() {
