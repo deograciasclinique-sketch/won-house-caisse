@@ -330,7 +330,9 @@ function ico(n){n=(n||"").toLowerCase();
 const S = { days:{}, tarifs:DEFAULT_TARIFS, tab:"jour", date:todayISO(), period:null, mode:"loading" };
 let db=null, assets=null, downloads=null, user=null, myId=null, readOnly=false;
 const CLIENT=uidSafe(); const recentLocal={}; S.raw={}; S.names={};
-S.cmds=null; S.cmdErr=""; S.pub=undefined; const cmdKnown=new Set(); let cmdReady=false;
+S.cmds=null; S.cmdErr=""; S.pub=undefined; const cmdKnown=new Set(); const cmdPay={}; let cmdReady=false;
+// Rappel sonore toutes les 45 s tant qu'une commande attend d'être acceptée (pour ne jamais la rater).
+setInterval(()=>{if(cmdReady&&(S.cmds||[]).some(c=>c.statut==="nouvelle"))ring("rappel","Une commande client attend d'être acceptée");},45000);
 function uidSafe(){return "c"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 
 /* ---------- utils ---------- */
@@ -884,8 +886,11 @@ function startOrders(){
     if(list===null){S.cmdErr=err||"Commandes indisponibles.";if(S.tab==="commandes")render();return;}
     S.cmdErr="";
     const nouvelles=list.filter(c=>c.statut==="nouvelle"&&!cmdKnown.has(c.id));
-    list.forEach(c=>cmdKnown.add(c.id));
-    if(cmdReady&&nouvelles.length){ring();toast("🛎️ Nouvelle commande client : n° "+nouvelles.map(c=>c.code).join(", "));}
+    // Paiement Mobile Money déclaré par un client (à vérifier) : sonnerie « caisse ».
+    const payes=list.filter(c=>cmdKnown.has(c.id)&&(c.paiement||{}).etat==="declare"&&cmdPay[c.id]!=="declare");
+    list.forEach(c=>{cmdKnown.add(c.id);cmdPay[c.id]=(c.paiement||{}).etat;});
+    if(cmdReady&&nouvelles.length){const m="Nouvelle commande client : n° "+nouvelles.map(c=>c.code).join(", ");ring("nouvelle",m);toast("🛎️ "+m);}
+    if(cmdReady&&payes.length){const m="Paiement Mobile Money à vérifier : n° "+payes.map(c=>c.code).join(", ");setTimeout(()=>ring("paiement",m),nouvelles.length?1600:0);toast("📱 "+m);}
     if(!fromCache) cmdReady=true; else if(S.cmds===null) cmdReady=true;
     S.cmds=list; if(S.tab==="commandes")render(); else updateBadge();
   });
@@ -904,9 +909,14 @@ function syncMenu(create){
   }
 }
 function updateBadge(){const b=document.getElementById("cmd-badge");if(!b)return;const n=(S.cmds||[]).filter(c=>c.statut==="nouvelle").length;b.hidden=!n;b.textContent=n;}
-function ring(){
-  try{navigator.vibrate&&navigator.vibrate([200,100,200]);}catch(e){}
-  try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;const ctx=new A();[0,.25,.5].forEach((t,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=i===2?1175:880;g.gain.setValueAtTime(.0001,ctx.currentTime+t);g.gain.exponentialRampToValueAtTime(.35,ctx.currentTime+t+.02);g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+t+.22);o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.25);});setTimeout(()=>ctx.close(),1200);}catch(e){}
+// Sonneries : "nouvelle" commande (forte, 2 fois), "paiement" déclaré (caisse), "rappel" (commande pas encore acceptée).
+// Si l'application est en arrière-plan, une notification Android avec son s'affiche aussi.
+const RING_NOTES={nouvelle:[[0,880],[.22,1175],[.44,1568],[.9,880],[1.12,1175],[1.34,1568]],paiement:[[0,1568],[.12,2093],[.3,1568],[.42,2093]],rappel:[[0,880],[.25,1175]]};
+function ring(kind,msg){
+  kind=RING_NOTES[kind]?kind:"nouvelle";
+  try{navigator.vibrate&&navigator.vibrate(kind==="rappel"?[150]:[250,120,250,120,250]);}catch(e){}
+  try{const A=window.AudioContext||window.webkitAudioContext;if(A){const ctx=new A();const notes=RING_NOTES[kind];notes.forEach(([t,f])=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type="sine";o.frequency.value=f;g.gain.setValueAtTime(.0001,ctx.currentTime+t);g.gain.exponentialRampToValueAtTime(.45,ctx.currentTime+t+.02);g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+t+.2);o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.22);});setTimeout(()=>ctx.close(),2500);}}catch(e){}
+  try{if(msg&&document.visibilityState==="hidden"&&window.__whNotify)window.__whNotify("WON HOUSE",msg);}catch(e){}
 }
 function sameDay(ts,iso){return toISO(new Date(ts))===iso;}
 function cmdCard(c){

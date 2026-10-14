@@ -469,13 +469,81 @@ async function declarerPaiement() {
   }
 }
 
+/* ---------- alertes sonores du suivi de commande ----------
+   À chaque étape (acceptée, prête, livrée/servie, refusée, paiement reçu…),
+   le téléphone du client sonne, vibre et affiche un message — et une
+   notification apparaît si la page n'est pas à l'écran. */
+let sonCtx = null;
+function audio() {
+  try {
+    if (!sonCtx) { const A = window.AudioContext || window.webkitAudioContext; if (A) sonCtx = new A(); }
+    if (sonCtx && sonCtx.state === "suspended") sonCtx.resume();
+  } catch (e) {}
+  return sonCtx;
+}
+// Les navigateurs n'autorisent le son qu'après un premier geste : on « débloque » au premier toucher.
+["pointerdown", "touchstart", "click"].forEach((ev) => document.addEventListener(ev, audio, { once: true, passive: true }));
+const MELODIES = {
+  acceptee: [[0, 659], [.18, 880]],
+  prete: [[0, 784], [.18, 988], [.36, 1319], [.7, 784], [.88, 988], [1.06, 1319]],
+  servie: [[0, 523], [.15, 659], [.3, 784], [.45, 1047]],
+  refusee: [[0, 440], [.25, 330]],
+  payok: [[0, 1568], [.12, 2093], [.3, 1568], [.42, 2093]],
+  payko: [[0, 523], [.25, 392]],
+};
+function sonner(kind) {
+  try { navigator.vibrate && navigator.vibrate(kind === "prete" ? [300, 120, 300, 120, 300] : [200, 100, 200]); } catch (e) {}
+  const ctx = audio(); if (!ctx) return;
+  try {
+    (MELODIES[kind] || MELODIES.acceptee).forEach(([t, f]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(.4, ctx.currentTime + t + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + t + .2);
+      o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + .22);
+    });
+  } catch (e) {}
+}
+function notifier(msg) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted" || document.visibilityState === "visible") return;
+    const opts = { body: msg, icon: "icon-192.png", badge: "icon-192.png", vibrate: [200, 100, 200], tag: "wh-commande", renotify: true };
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then((r) => r.showNotification("WON HOUSE", opts)).catch(() => {});
+    else new Notification("WON HOUSE", opts);
+  } catch (e) {}
+}
+function demanderNotif() {
+  try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {}); } catch (e) {}
+}
+function alerteEtape(avant, c) {
+  if (!avant) return;
+  const liv = c.mode === "livraison", emp = c.mode === "à emporter";
+  let kind = "", msg = "";
+  if (c.statut !== avant.statut) {
+    if (c.statut === "acceptee") { kind = "acceptee"; msg = "Commande acceptée : on cuisine pour vous !"; }
+    else if (c.statut === "prete") { kind = "prete"; msg = liv ? "Votre commande est prête, le livreur part !" : emp ? "Votre commande est prête, venez la chercher !" : "Votre commande est prête, on vous sert !"; }
+    else if (c.statut === "servie") { kind = "servie"; msg = liv ? "Commande livrée. Bon appétit !" : "Bon appétit ! Merci d'avoir choisi WON HOUSE."; }
+    else if (c.statut === "refusee") { kind = "refusee"; msg = "Commande refusée" + (c.motif ? " : " + c.motif : "."); }
+  }
+  const pa = (avant.paiement || {}).etat, pn = (c.paiement || {}).etat;
+  if (!kind && pa !== pn) {
+    if (pn === "confirme") { kind = "payok"; msg = "Paiement reçu par le restaurant. Merci !"; }
+    else if (pn === "refuse") { kind = "payko"; msg = "Le restaurant n'a pas trouvé votre paiement."; }
+  }
+  if (!kind) return;
+  sonner(kind); toast(msg); notifier(msg);
+}
+
 let stopSuivi = null;
 function suivre(id) {
   stopSuivi && stopSuivi();
   ST.suivi = null; ST.suiviId = id; ST.payErr = ""; ST.vue = "suivi"; render(); scrollTo(0, 0);
+  let avant = null;
   stopSuivi = onSnapshot(doc(fs, "commandes", id), (s) => {
     if (!s.exists()) { ST.suivi = { code: "?", statut: "refusee", motif: "Commande introuvable.", items: [], total: 0 }; }
     else ST.suivi = s.data({ serverTimestamps: "estimate" });
+    if (s.exists()) { alerteEtape(avant, ST.suivi); avant = { statut: ST.suivi.statut, paiement: { etat: (ST.suivi.paiement || {}).etat } }; }
     if (ST.vue === "suivi") { lireForm(); render(); }
   }, () => { if (ST.vue === "suivi") { ST.suivi = ST.suivi || { code: "?", statut: "nouvelle", items: [], total: 0 }; render(); } });
 }
@@ -513,6 +581,7 @@ async function envoyer() {
     garderCommande({ id: ref.id, code, total: data.aPayer, at: Date.now() });
     ST.panier = {}; form.note = ""; ST.envoi = false;
     if (navigator.vibrate) navigator.vibrate(80);
+    audio(); demanderNotif(); // autorise le son et les notifications pour les étapes suivantes
     suivre(ref.id);
   } catch (e) {
     ST.envoi = false;

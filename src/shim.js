@@ -15,6 +15,7 @@ import QRCode from "qrcode";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { registerPlugin, Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import SEED from "./seed.json";
 
 const cfg = window.FIREBASE_CONFIG;
@@ -288,6 +289,32 @@ const downloadsApi = {
     await Share.share({ title: filename, files: [r.uri], dialogTitle: "Envoyer le fichier" });
     return { status: "delivered" };
   },
+};
+
+/* ---------------- notifications (application en arrière-plan) ----------------
+   Quand l'application n'est pas à l'écran, une notification Android avec son
+   prévient le gestionnaire d'une nouvelle commande ou d'un paiement à vérifier. */
+let notifPret = null;
+function preparerNotif() {
+  if (!Capacitor.isNativePlatform()) return Promise.resolve(false);
+  if (!notifPret) notifPret = (async () => {
+    try {
+      let p = await LocalNotifications.checkPermissions();
+      if (p.display !== "granted") p = await LocalNotifications.requestPermissions();
+      try {
+        await LocalNotifications.createChannel({ id: "commandes", name: "Commandes clients", description: "Sonnerie à chaque commande et paiement", importance: 5, visibility: 1, vibration: true });
+      } catch (e) {}
+      return p.display === "granted";
+    } catch (e) { return false; }
+  })();
+  return notifPret;
+}
+preparerNotif();
+window.__whNotify = (title, body) => {
+  preparerNotif().then((ok) => {
+    if (!ok) return;
+    LocalNotifications.schedule({ notifications: [{ id: Math.floor(Date.now() % 2000000000), title, body, channelId: "commandes" }] }).catch(() => {});
+  });
 };
 
 /* ---------------- envoyer l'application (WhatsApp) ---------------- */
