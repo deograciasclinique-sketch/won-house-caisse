@@ -437,7 +437,7 @@ function openCamera(title) {
     const el = document.createElement("div"); el.className = "wh-cam";
     el.innerHTML = `<video playsinline autoplay muted></video><div class="flash"></div>
       <div class="top"><span>📷 ${title || "Photo"}</span><span id="wh-clock"></span></div>
-      <div class="bar"><button class="ic" data-x="close" aria-label="Fermer">✕</button><button class="shoot" data-x="shoot" aria-label="Prendre la photo"></button><button class="ic" data-x="flip" aria-label="Changer de caméra">🔄</button></div>`;
+      <div class="bar"><button class="ic" data-x="close" aria-label="Fermer">✕</button><button class="ic" data-x="gallery" aria-label="Choisir une photo dans la galerie">🖼</button><button class="shoot" data-x="shoot" aria-label="Prendre la photo"></button><button class="ic" data-x="flip" aria-label="Changer de caméra">🔄</button></div>`;
     document.body.appendChild(el);
     const video = el.querySelector("video");
     const clock = el.querySelector("#wh-clock");
@@ -455,6 +455,12 @@ function openCamera(title) {
       const x = e.target.closest("[data-x]")?.dataset.x; if (!x) return;
       if (x === "close") done(null);
       else if (x === "flip") { facing = facing === "environment" ? "user" : "environment"; start(); }
+      else if (x === "gallery") {
+        // Photo déjà téléchargée sur le téléphone (WhatsApp, Internet, galerie…)
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+        inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) done(f); };
+        inp.click();
+      }
       else if (x === "shoot") {
         const c = document.createElement("canvas"); c.width = video.videoWidth || 1280; c.height = video.videoHeight || 720;
         c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
