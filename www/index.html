@@ -290,6 +290,19 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
   @keyframes burst{from{opacity:1;transform:translate(-50%,-50%)}to{opacity:0;transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) rotate(var(--r))}}
 }
 @media (prefers-reduced-motion:reduce){.steam path{animation:none}.float,.confetti{display:none}}
+.rep-top{display:flex;gap:8px;margin:4px 0 10px}
+.rep-top input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;font-size:16px}
+.rep-tags{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
+.rep-tags button{border:1px solid var(--line);background:transparent;border-radius:20px;padding:7px 12px;font-weight:700;font-size:13px;color:inherit}
+.rep-tags button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.rep{border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.rep .nm{font-weight:800;font-size:16px}
+.rep .tl{font-weight:700;color:var(--muted);font-size:14px;margin-top:2px}
+.rep .inf{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.4}
+.rep .acts{display:flex;gap:8px;margin-top:10px}
+.rep .acts .btn{flex:1;margin:0;padding:11px 8px;font-size:14px}
+.rep .cat{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:8px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:2px}
+.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;font-size:16px;width:100%;box-sizing:border-box;font-family:inherit}
 </style>
 
 <div class="wrap">
@@ -453,6 +466,7 @@ function render(){
   if(S.tab==="bilan") view.innerHTML=renderBilan();
   if(S.tab==="carte") view.innerHTML=renderCarte();
   if(S.tab==="commandes") view.innerHTML=renderCommandes();
+  if(S.tab==="repertoire") view.innerHTML=renderRepertoire();
   updateBadge();
   window.scrollTo(0,sy);
   loadNames();
@@ -623,7 +637,7 @@ function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null;}}
 const WA_ICON=`<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z"/></svg>`;
 function openMenu(){
   const A=window.__whApp;
-  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["commandes","🛎️","Commandes clients","Menu en ligne, commandes reçues, QR code"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
+  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["commandes","🛎️","Commandes clients","Menu en ligne, commandes reçues, QR code"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["repertoire","📇","Répertoire clients","Numéros des clients et contacts du restaurant"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
   openSheet(`<h3>Menu</h3><div class="menu-list">
     ${nav.map(([t,i,l,d])=>`<button class="menu-item" data-go="${t}"><span class="mi">${i}</span><span>${l}<small>${d}</small></span></button>`).join("")}
     <button class="menu-item" data-sync><span class="mi">🔄</span><span>Synchronisation<small>État de l'envoi, téléphones reliés</small></span></button>
@@ -634,7 +648,7 @@ function openMenu(){
     if(A&&A.version) A.version().then(v=>{const f=sh.querySelector("#menu-ver");if(v&&v.version&&f)f.textContent="WON HOUSE · version "+v.version;});
     sh.addEventListener("click",async e=>{
       const go=e.target.closest("[data-go]"),sy=e.target.closest("[data-sync]"),share=e.target.closest("[data-share]");
-      if(go){closeSheet();document.querySelector(`.tabs [data-tab="${go.dataset.go}"]`)?.click();window.scrollTo({top:0,behavior:"smooth"});}
+      if(go){closeSheet();goTab(go.dataset.go);}
       else if(sy){closeSheet();document.querySelector('.tabs [data-tab="carte"]')?.click();setTimeout(()=>document.getElementById("wh-diag")?.scrollIntoView({behavior:"smooth"}),300);}
       else if(share){
         if(!A){toast("Partage disponible dans l'application Android.");return;}
@@ -809,6 +823,94 @@ function achatSheet(existing,preset){
   });
 }
 
+/* ---------- répertoire des clients ---------- */
+const REP_CATS=["Client","Fournisseur","Livreur","Personnel","Autre"];
+const REP=()=>window.__whRepertoire;
+const repUI={q:"",cat:"Tous"};
+// Même numéro écrit autrement (+226, espaces…) = même fiche : on garde les 8 derniers chiffres.
+function repKey(tel){const d=String(tel||"").replace(/\D/g,"");if(d.length<6)return null;return "t"+(d.length>8?d.slice(-8):d);}
+function repTelAff(tel){const d=String(tel||"").replace(/\D/g,"");const t=d.length>8?d.slice(-8):d;return t.length===8?t.replace(/(\d\d)(?=\d)/g,"$1 "):String(tel||"");}
+function repIntl(tel){const d=String(tel||"").replace(/\D/g,"");return d.length===8?"226"+d:d;}
+function goTab(t){const b=document.querySelector(`.tabs [data-tab="${t}"]`);if(b){b.click();}else{S.tab=t;S.anim=true;document.querySelectorAll(".tabs [data-tab]").forEach(x=>x.setAttribute("aria-selected","false"));render();}window.scrollTo({top:0,behavior:"smooth"});}
+function startRepertoire(){
+  if(!REP()) return;
+  REP().watch(r=>{if(r===null)return;S.rep=r;noterClients(S.cmds||[]);if(S.tab==="repertoire"&&!document.activeElement?.closest?.(".rep-top"))render();else if(S.tab==="commandes")render();});
+}
+// Chaque commande client ajoute (ou met à jour) la fiche de son numéro, une seule fois par commande.
+function noterClients(list){
+  if(!S.rep||readOnly||!REP()||!list) return;
+  list.forEach(c=>{
+    const tel=(c.tel||"").trim()||((c.paiement||{}).numero||"").trim(); const k=repKey(tel); if(!k) return;
+    const f=S.rep[k]||{}; if(f.cmds&&f.cmds[c.id]!==undefined) return;
+    const at=c.at||Date.now();
+    const data={tel:f.tel||tel,nomCmd:String(c.nom||"").slice(0,60),cmds:{[c.id]:Number(c.aPayer)||Number(c.total)||0},masque:false};
+    if(!f.derniere||at>f.derniere) data.derniere=at;
+    if(!f.premiere||at<f.premiere) data.premiere=at;
+    if(c.mode==="livraison"&&c.adresse&&!f.adresse) data.adresse=String(c.adresse).slice(0,200);
+    if(!f.cat) data.cat="Client";
+    S.rep[k]={...f,...data,cmds:{...(f.cmds||{}),...data.cmds}};
+    REP().save(k,data).catch(()=>{});
+  });
+}
+function repListe(){
+  const q=repUI.q.trim().toLowerCase(), qd=q.replace(/\D/g,"");
+  return Object.entries(S.rep||{}).map(([k,f])=>({k,...f,nomAff:f.nom||f.nomCmd||"Sans nom",nb:Object.keys(f.cmds||{}).length,cat:f.cat||"Client"}))
+    .filter(f=>!f.masque)
+    .filter(f=>repUI.cat==="Tous"||f.cat===repUI.cat)
+    .filter(f=>!q||f.nomAff.toLowerCase().includes(q)||(qd&&String(f.tel||"").replace(/\D/g,"").includes(qd))||String(f.adresse||"").toLowerCase().includes(q)||String(f.note||"").toLowerCase().includes(q))
+    .sort((a,b)=>(b.derniere||b.majAt||0)-(a.derniere||a.majAt||0));
+}
+function renderRepertoire(){
+  if(!REP()||S.mode!=="live") return `<h2 class="sec">Répertoire clients</h2><div class="empty">Connectez-vous au compte du restaurant pour voir le répertoire.</div>`;
+  if(!S.rep) return `<h2 class="sec">Répertoire clients</h2><div class="empty">Chargement du répertoire…</div>`;
+  const tous=Object.values(S.rep).filter(f=>!f.masque); const l=repListe();
+  const cats=["Tous",...REP_CATS].filter(c=>c==="Tous"||tous.some(f=>(f.cat||"Client")===c));
+  return `<h2 class="sec">Répertoire clients <span class="num">${tous.length}</span></h2>
+  <p style="color:var(--muted);font-size:13.5px;margin:0 2px 10px">Chaque client qui commande en ligne est ajouté tout seul avec son numéro. Ajoutez vous-même les autres clients, fournisseurs, livreurs…</p>
+  <div class="rep-top"><input id="rep-q" type="search" placeholder="Chercher un nom, un numéro, un quartier" value="${esc(repUI.q)}" aria-label="Chercher dans le répertoire"><button class="btn primary" data-act="rep-add" style="margin:0;flex:none" ${readOnly?"disabled":""}>+ Ajouter</button></div>
+  ${cats.length>2?`<div class="rep-tags">${cats.map(c=>`<button data-rep-cat="${esc(c)}" aria-pressed="${repUI.cat===c}">${esc(c)}</button>`).join("")}</div>`:""}
+  ${l.length?l.map(f=>`<div class="rep">
+    <div class="nm">${esc(f.nomAff)}${f.cat!=="Client"?`<span class="cat">${esc(f.cat)}</span>`:""}</div>
+    <div class="tl">${esc(repTelAff(f.tel))}</div>
+    <div class="inf">${f.nb?`🛎️ ${f.nb} commande${f.nb>1?"s":""} en ligne${f.derniere?` · dernière le ${esc(new Date(f.derniere).toLocaleDateString("fr-FR"))}`:""}<br>`:""}${f.adresse?`📍 ${esc(f.adresse)}<br>`:""}${f.note?`📝 ${esc(f.note)}`:""}</div>
+    <div class="acts"><button class="btn ghost" data-rep-call="${esc(f.k)}">📞 Appeler</button><button class="btn ghost" data-rep-wa="${esc(f.k)}">💬 WhatsApp</button><button class="btn ghost" data-rep-edit="${esc(f.k)}" ${readOnly?"disabled":""} aria-label="Modifier ${esc(f.nomAff)}">✏️</button></div>
+  </div>`).join(""):`<div class="empty">${tous.length?"Aucun contact ne correspond.":"Le répertoire est vide pour l'instant. Il se remplit tout seul avec les commandes des clients, ou touchez « + Ajouter »."}</div>`}`;
+}
+function repSheet(k){
+  const f=k?(S.rep||{})[k]||{}:{}; const st={nom:f.nom||f.nomCmd||"",tel:f.tel||"",cat:f.cat||"Client",adresse:f.adresse||"",note:f.note||""};
+  openSheet(`<h3>${k?"Modifier le contact":"Nouveau contact"}</h3>
+    <div class="field"><label for="rn">Nom</label><input id="rn" value="${esc(st.nom)}" maxlength="60" placeholder="Ex. : Awa Ouédraogo"></div>
+    <div class="field"><label for="rt">Téléphone</label><input id="rt" type="tel" inputmode="tel" value="${esc(st.tel)}" maxlength="30" placeholder="Ex. : 70 00 00 00"></div>
+    <div class="field"><label>Catégorie</label><div class="chips">${REP_CATS.map(c=>`<button type="button" class="chip" data-c="${c}" aria-pressed="${st.cat===c}">${c}</button>`).join("")}</div></div>
+    <div class="field"><label for="ra">Quartier / adresse</label><input id="ra" value="${esc(st.adresse)}" maxlength="200" placeholder="Facultatif"></div>
+    <div class="field"><label for="ro">Remarque</label><textarea id="ro" rows="2" maxlength="300" placeholder="Ex. : aime le riz gras sans piment, client fidèle">${esc(st.note)}</textarea></div>
+    ${f.nb||Object.keys(f.cmds||{}).length?`<p style="color:var(--muted);font-size:13px;margin:10px 2px 0">🛎️ ${Object.keys(f.cmds).length} commande(s) en ligne.</p>`:""}
+    <div class="sheet-actions">${k?`<button class="btn ghost danger" data-del>Supprimer</button>`:`<button class="btn ghost" data-cancel>Annuler</button>`}<button class="btn primary" data-ok>Enregistrer</button></div>`,
+  sh=>{
+    sh.querySelectorAll("[data-c]").forEach(b=>b.addEventListener("click",()=>{st.cat=b.dataset.c;sh.querySelectorAll("[data-c]").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
+    sh.querySelector("[data-cancel]")?.addEventListener("click",closeSheet);
+    sh.querySelector("[data-del]")?.addEventListener("click",e=>{if(e.target.dataset.sure){closeSheet();REP().save(k,{masque:true});if(S.rep[k])S.rep[k].masque=true;render();toast("Contact supprimé");}else{e.target.dataset.sure="1";e.target.textContent="Confirmer ?";}});
+    sh.querySelector("[data-ok]").addEventListener("click",()=>{
+      const nom=sh.querySelector("#rn").value.trim(), tel=sh.querySelector("#rt").value.trim();
+      const nk=repKey(tel); if(!nk){toast("Indiquez un numéro de téléphone valide.");return;}
+      if(!nom){toast("Indiquez le nom.");return;}
+      if(!k&&S.rep[nk]&&!S.rep[nk].masque){toast("Ce numéro est déjà dans le répertoire.");return;}
+      const data={nom,tel,cat:st.cat,adresse:sh.querySelector("#ra").value.trim(),note:sh.querySelector("#ro").value.trim(),masque:false};
+      if(!(S.rep[nk]||{}).premiere) data.ajoute=Date.now();
+      if(k&&k!==nk){const old=S.rep[k]||{};REP().save(nk,{...old,...data});REP().save(k,{masque:true});S.rep[nk]={...old,...data};S.rep[k]={...old,masque:true};}
+      else{REP().save(nk,data);S.rep[nk]={...(S.rep[nk]||{}),...data};}
+      closeSheet();render();toast(k?"Contact modifié":"📇 Contact ajouté");
+    });
+  });
+}
+view.addEventListener("input",e=>{if(e.target.id!=="rep-q")return;repUI.q=e.target.value;const pos=e.target.selectionStart;render();const i=document.getElementById("rep-q");if(i){i.focus();try{i.setSelectionRange(pos,pos);}catch(x){}}});
+view.addEventListener("click",e=>{
+  const c=e.target.closest("[data-rep-cat]"); if(c){repUI.cat=c.dataset.repCat;render();return;}
+  const call=e.target.closest("[data-rep-call]"); if(call){const f=S.rep[call.dataset.repCall];if(f)(window.__whOpenUrl||(x=>{location.href=x;}))("tel:"+String(f.tel).replace(/[^\d+]/g,""));return;}
+  const wa=e.target.closest("[data-rep-wa]"); if(wa){const f=S.rep[wa.dataset.repWa];if(f)(window.__whOpenUrl||(x=>window.open(x,"_blank")))("https://wa.me/"+repIntl(f.tel));return;}
+  const ed=e.target.closest("[data-rep-edit]"); if(ed&&!readOnly){repSheet(ed.dataset.repEdit);}
+});
+
 /* ---------- export ---------- */
 async function exportMonth(){
   const {start,end}=S.period; const rows=[["Date","Heure","Type","Article / Produit","Catégorie","Quantité","Prix unitaire","Montant","Remarque","Photo prise le"]];
@@ -836,6 +938,8 @@ view.addEventListener("click",e=>{
   else if(a==="pprev"){S.period=periodOf(addDays(S.period.start,-1));S.anim=true;render();}
   else if(a==="pnext"){S.period=periodOf(addDays(S.period.end,1));S.anim=true;render();}
   else if(a==="export") exportMonth();
+  else if(a==="go-rep") goTab("repertoire");
+  else if(a==="rep-add") repSheet();
   else if(a==="add-t"){const tt=readTarifsForm();tt.produits.push({nom:"",prix:0});S.tarifs=tt;render();document.getElementById("tn"+(tt.produits.length-1))?.focus();}
   else if(a==="save-t"){const tt=readTarifsForm();tt.produits=tt.produits.filter(p=>p.nom.trim());saveTarifs(tt);}
   else if(t.dataset.delT!==undefined){const tt=readTarifsForm();tt.produits.splice(Number(t.dataset.delT),1);S.tarifs=tt;render();toast("Retiré. Pensez à enregistrer la carte.");}
@@ -892,8 +996,9 @@ function startOrders(){
     if(cmdReady&&nouvelles.length){const m="Nouvelle commande client : n° "+nouvelles.map(c=>c.code).join(", ");ring("nouvelle",m);toast("🛎️ "+m);}
     if(cmdReady&&payes.length){const m="Paiement Mobile Money à vérifier : n° "+payes.map(c=>c.code).join(", ");setTimeout(()=>ring("paiement",m),nouvelles.length?1600:0);toast("📱 "+m);}
     if(!fromCache) cmdReady=true; else if(S.cmds===null) cmdReady=true;
-    S.cmds=list; if(S.tab==="commandes")render(); else updateBadge();
+    S.cmds=list; noterClients(list); if(S.tab==="commandes")render(); else updateBadge();
   });
+  startRepertoire();
   O().watchMenu(m=>{const first=S.pub===undefined;S.pub=m;if(m===null)syncMenu(true);else if(first)syncMenu();if(S.tab==="commandes")render();
     // Rappel de 7 h 30 : pas de rappel aujourd'hui si le menu du jour est déjà choisi.
     if(m!==undefined&&!readOnly&&window.__whRappelJour){const j=m&&m.jour;window.__whRappelJour(!!(j&&j.date===toISO(new Date())&&(j.plats||[]).length));}});
@@ -976,6 +1081,7 @@ function renderCommandes(){
   ${aTraiter.length?aTraiter.map(cmdCard).join(""):`<div class="empty" style="padding:14px">Aucune nouvelle commande. Une sonnerie vous prévient quand un client commande (application ouverte).</div>`}
   ${enCours.length?`<h2 class="sec">En cours (${enCours.length})</h2>${enCours.map(cmdCard).join("")}`:""}
   ${finies.length?`<h2 class="sec">Terminées${caJour?` · aujourd'hui ${F(caJour)}`:""}</h2>${finies.map(cmdCard).join("")}`:""}
+  <button class="btn ghost" data-act="go-rep" style="width:100%;margin:14px 0 0">📇 Répertoire clients${S.rep?` (${Object.values(S.rep).filter(c=>!c.masque).length})`:""}</button>
   <h2 class="sec">Menu du jour</h2>
   <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez les plats du jour : ils s'affichent en grand, avec une animation, quand le client ouvre le menu. À choisir chaque matin (sinon le client voit le plat le plus vendu et les plats avec photo).</p>
   <div class="dispo">${(()=>{const j=pub&&pub.jour&&pub.jour.date===toISO(new Date())?new Set(pub.jour.plats||[]):new Set();return menuProduits().map(p=>`<button class="${j.has(p.nom)?"jour":""}" data-cmd="jour" data-nom="${esc(p.nom)}" aria-pressed="${j.has(p.nom)}" ${readOnly||!pub?"disabled":""}>${j.has(p.nom)?"★ ":""}${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`;})()}</div>

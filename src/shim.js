@@ -317,6 +317,16 @@ window.__whNotify = (title, body) => {
   });
 };
 
+/* ---------------- répertoire des clients et contacts ----------------
+   Collection « repertoire » (réservée à l'équipe) : une fiche par numéro de téléphone.
+   Remplie toute seule à chaque commande client, et complétée à la main par l'équipe. */
+window.__whRepertoire = {
+  watch: (next) => (fs && currentUser ? onSnapshot(collection(fs, "repertoire"), s => {
+    const out = {}; s.docs.forEach(d => { out[d.id] = d.data(); }); next(out);
+  }, () => next(null)) : () => {}),
+  save: (key, data) => write(() => setDoc(doc(fs, "repertoire", key), { ...data, majAt: Date.now(), majBy: currentUser?.uid || null }, { merge: true })),
+};
+
 /* ---------------- rappel du matin : choisir le menu du jour ----------------
    Chaque matin à 7 h 30, une notification rappelle de choisir le menu du jour.
    Programmée pour les 14 prochains jours (reprogrammée à chaque ouverture) ;
