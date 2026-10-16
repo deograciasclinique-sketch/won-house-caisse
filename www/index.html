@@ -894,7 +894,9 @@ function startOrders(){
     if(!fromCache) cmdReady=true; else if(S.cmds===null) cmdReady=true;
     S.cmds=list; if(S.tab==="commandes")render(); else updateBadge();
   });
-  O().watchMenu(m=>{const first=S.pub===undefined;S.pub=m;if(m===null)syncMenu(true);else if(first)syncMenu();if(S.tab==="commandes")render();});
+  O().watchMenu(m=>{const first=S.pub===undefined;S.pub=m;if(m===null)syncMenu(true);else if(first)syncMenu();if(S.tab==="commandes")render();
+    // Rappel de 7 h 30 : pas de rappel aujourd'hui si le menu du jour est déjà choisi.
+    if(m!==undefined&&!readOnly&&window.__whRappelJour){const j=m&&m.jour;window.__whRappelJour(!!(j&&j.date===toISO(new Date())&&(j.plats||[]).length));}});
 }
 function menuProduits(){return (S.tarifs.produits||[]).filter(p=>p&&p.nom&&String(p.nom).trim()).map(p=>({nom:String(p.nom).trim(),prix:Number(p.prix)||0,...(p.photo?{photo:String(p.photo)}:{}),...(p.desc&&String(p.desc).trim()?{desc:String(p.desc).trim().slice(0,200)}:{})}));}
 // Garde le menu public identique à la carte (plats et prix).
@@ -977,6 +979,7 @@ function renderCommandes(){
   <h2 class="sec">Menu du jour</h2>
   <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez les plats du jour : ils s'affichent en grand, avec une animation, quand le client ouvre le menu. À choisir chaque matin (sinon le client voit le plat le plus vendu et les plats avec photo).</p>
   <div class="dispo">${(()=>{const j=pub&&pub.jour&&pub.jour.date===toISO(new Date())?new Set(pub.jour.plats||[]):new Set();return menuProduits().map(p=>`<button class="${j.has(p.nom)?"jour":""}" data-cmd="jour" data-nom="${esc(p.nom)}" aria-pressed="${j.has(p.nom)}" ${readOnly||!pub?"disabled":""}>${j.has(p.nom)?"★ ":""}${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`;})()}</div>
+  ${pub&&pub.jour&&pub.jour.date===toISO(new Date())&&(pub.jour.plats||[]).length?`<button class="btn primary" data-cmd="annoncer" style="width:100%;margin:10px 0 4px" ${readOnly?"disabled":""}>📣 Annoncer le menu du jour aux clients (WhatsApp)</button><p style="color:var(--muted);font-size:12.5px;margin:0 2px 8px">Envoie un message prêt avec les plats, les prix et le lien pour commander : à votre liste de diffusion, votre statut ou vos groupes WhatsApp.</p>`:""}
   <h2 class="sec">Plats disponibles pour les clients</h2>
   <p style="color:var(--muted);font-size:13.5px;margin:0 2px 8px">Touchez un plat épuisé pour le cacher aux clients ; touchez-le encore quand il revient. Les prix viennent de l'onglet Carte.</p>
   <div class="dispo">${menuProduits().map(p=>`<button class="${indispo.has(p.nom)?"off":""}" data-cmd="dispo" data-nom="${esc(p.nom)}" ${readOnly||!pub?"disabled":""}>${esc(p.nom)}</button>`).join("")||`<span style="color:var(--muted)">Ajoutez des plats dans l'onglet Carte.</span>`}</div>
@@ -1007,10 +1010,21 @@ function reglagesPaiementLivraison(pub){
     <button class="btn primary" style="width:100%;margin-top:12px" data-cmd="lv" ${dis}>Enregistrer la livraison</button>
   </div>`;
 }
+// Message WhatsApp prêt à envoyer aux clients : plats du jour, prix et lien du menu.
+function annoncerMenuJour(){
+  const j=S.pub&&S.pub.jour; if(!j||j.date!==toISO(new Date())) return;
+  const prods=menuProduits(); const indispo=new Set(S.pub.indispo||[]);
+  const lignes=(j.plats||[]).filter(n=>!indispo.has(n)).map(n=>{const p=prods.find(x=>x.nom===n);return p?`🍽️ ${p.nom} — ${F(p.prix)}`+(p.desc?`\n    ${p.desc}`:""):null;}).filter(Boolean);
+  if(!lignes.length){toast("Aucun plat du jour disponible à annoncer.");return;}
+  const d=new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+  const txt=`☀️ *Menu du jour WON HOUSE* · ${d}\n\n${lignes.join("\n")}\n\n👉 Commandez ici (sur place, à emporter ou livraison) :\n${O().url}`;
+  O().share(txt).then(()=>toast("Message prêt : choisissez WhatsApp puis vos contacts ou votre statut.")).catch(()=>toast("Partage impossible. Réessayez."));
+}
 async function cmdAction(b){
   const a=b.dataset.cmd, id=b.dataset.id, c=(S.cmds||[]).find(x=>x.id===id);
   if(readOnly) return;
   if(a==="ouvrir"&&S.pub){O().publishMenu({ouvert:!S.pub.ouvert});toast(S.pub.ouvert?"Commandes fermées":"Commandes ouvertes");}
+  else if(a==="annoncer"&&S.pub){annoncerMenuJour();}
   else if(a==="jour"&&S.pub){const today=toISO(new Date());const set=new Set(S.pub.jour&&S.pub.jour.date===today?(S.pub.jour.plats||[]):[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({jour:{date:today,plats:[...set].slice(0,8)}});toast(set.has(n)?"★ "+n+" : au menu du jour":n+" : retiré du menu du jour");}
   else if(a==="dispo"&&S.pub){const set=new Set(S.pub.indispo||[]);const n=b.dataset.nom;set.has(n)?set.delete(n):set.add(n);O().publishMenu({indispo:[...set]});toast(set.has(n)?n+" : épuisé":n+" : de nouveau disponible");}
   else if(a==="tel"){const v=(document.getElementById("pub-tel")?.value||"").trim().slice(0,30);O().publishMenu({tel:v});toast("Téléphone enregistré");}

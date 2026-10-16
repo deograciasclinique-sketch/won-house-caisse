@@ -317,6 +317,42 @@ window.__whNotify = (title, body) => {
   });
 };
 
+/* ---------------- rappel du matin : choisir le menu du jour ----------------
+   Chaque matin à 7 h 30, une notification rappelle de choisir le menu du jour.
+   Programmée pour les 14 prochains jours (reprogrammée à chaque ouverture) ;
+   pas de rappel le jour même si le menu du jour est déjà choisi. */
+const RAPPEL_BASE = 7300, RAPPEL_JOURS = 14;
+let rappelSig = "";
+window.__whRappelJour = (dejaChoisi) => {
+  preparerNotif().then(async (ok) => {
+    if (!ok) return;
+    const now = new Date();
+    const sig = now.toDateString() + "|" + (dejaChoisi ? 1 : 0);
+    if (sig === rappelSig) return; rappelSig = sig;
+    try {
+      try { await LocalNotifications.createChannel({ id: "rappels", name: "Rappel du menu du jour", description: "Chaque matin à 7 h 30", importance: 4, visibility: 1, vibration: true }); } catch (e) {}
+      const ids = []; for (let k = 0; k <= RAPPEL_JOURS; k++) ids.push({ id: RAPPEL_BASE + k });
+      await LocalNotifications.cancel({ notifications: ids }).catch(() => {});
+      const list = [];
+      for (let k = 0; k <= RAPPEL_JOURS; k++) {
+        const at = new Date(now.getFullYear(), now.getMonth(), now.getDate() + k, 7, 30, 0);
+        if (at <= now) continue;
+        if (k === 0 && dejaChoisi) continue;
+        list.push({ id: RAPPEL_BASE + k, title: "☀️ Menu du jour WON HOUSE", body: "Bonjour ! Choisissez les plats du jour : les clients les verront en grand dès qu'ils ouvrent le menu.", channelId: "rappels", schedule: { at, allowWhileIdle: true }, extra: { tab: "commandes" } });
+      }
+      if (list.length) await LocalNotifications.schedule({ notifications: list });
+    } catch (e) {}
+  });
+};
+if (Capacitor.isNativePlatform()) {
+  LocalNotifications.addListener("localNotificationActionPerformed", (a) => {
+    const tab = a && a.notification && a.notification.extra && a.notification.extra.tab;
+    if (!tab) return;
+    const go = () => { const b = document.querySelector(`.tabs [data-tab="${tab}"]`); if (b) { b.click(); setTimeout(() => { const h = [...document.querySelectorAll("h2.sec")].find(x => x.textContent.trim() === "Menu du jour"); h && h.scrollIntoView({ behavior: "smooth" }); }, 400); } };
+    document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => setTimeout(go, 800)) : setTimeout(go, 300);
+  }).catch(() => {});
+}
+
 /* ---------------- envoyer l'application (WhatsApp) ---------------- */
 const AppShare = registerPlugin("AppShare");
 const APK_LINK = "https://github.com/deograciasclinique-sketch/won-house-caisse/releases/latest/download/WON-HOUSE-caisse.apk";
