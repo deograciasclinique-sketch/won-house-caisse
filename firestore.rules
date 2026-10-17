@@ -36,20 +36,42 @@ service cloud.firestore {
       allow delete: if false; // supprimer la liste ouvrirait la caisse à tout compte : interdit
     }
 
-    /* ---------- données de la caisse (réservées à l'équipe) ---------- */
+    /* ---------- données de la caisse (réservées à l'équipe) ----------
+       Le GESTIONNAIRE peut seulement AJOUTER : nouvelles ventes, nouveaux achats, caisse du soir,
+       nouveaux plats, nouveaux contacts. Modifier ou supprimer ce qui existe = PROPRIÉTAIRE seulement. */
+    function seulementAjouts(avant, apres) {
+      return apres.diff(avant).changedKeys().size() == 0 && apres.diff(avant).removedKeys().size() == 0;
+    }
+    function ajoutJourOk() {
+      let a = resource.data;
+      let n = request.resource.data;
+      return n.diff(a).affectedKeys().hasOnly(['ventes', 'achats', 'caisse', 'caisseBy', 'date'])
+        && n.get('ventes', {}) is map && n.get('achats', {}) is map
+        && seulementAjouts(a.get('ventes', {}), n.get('ventes', {}))
+        && seulementAjouts(a.get('achats', {}), n.get('achats', {}))
+        && a.get('date', n.get('date', '')) == n.get('date', '');
+    }
     match /jours/{jour} {
-      allow read, create, update: if membre();
+      allow read, create: if membre();
+      allow update: if proprietaire() || (membre() && ajoutJourOk());
       allow delete: if proprietaire();
     }
     match /config/{id} {
-      allow read, write: if membre();
-    }
-    match /photos/{id} {
-      allow read, create, update: if membre();
+      allow read, create: if membre();
+      // le gestionnaire peut ajouter un plat, une photo ou une composition, jamais retirer un plat
+      allow update: if proprietaire() || (membre()
+        && request.resource.data.get('produits', []).size() >= resource.data.get('produits', []).size());
       allow delete: if proprietaire();
     }
+    match /photos/{id} {
+      allow read, create: if membre();
+      allow update, delete: if proprietaire();
+    }
     match /repertoire/{id} {
-      allow read, create, update: if membre();
+      allow read, create: if membre();
+      // supprimer un contact (masque = true) : propriétaire seulement
+      allow update: if proprietaire() || (membre()
+        && (request.resource.data.get('masque', false) == false || resource.data.get('masque', false) == true));
       allow delete: if proprietaire();
     }
     // Profil et « téléphone relié » : chacun ne modifie que le sien.
@@ -65,7 +87,8 @@ service cloud.firestore {
     /* ---------- menu public ---------- */
     match /public/{docId} {
       allow read: if true;
-      allow write: if membre();
+      allow create, update: if membre();
+      allow delete: if proprietaire();
     }
 
     /* ---------- commandes des clients ---------- */

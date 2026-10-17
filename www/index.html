@@ -357,6 +357,9 @@ const CLIENT=uidSafe(); const recentLocal={}; S.raw={}; S.names={};
 S.cmds=null; S.cmdErr=""; S.pub=undefined; const cmdKnown=new Set(); const cmdPay={}; let cmdReady=false;
 // Rappel sonore toutes les 45 s tant qu'une commande attend d'être acceptée (pour ne jamais la rater).
 setInterval(()=>{if(cmdReady&&(S.cmds||[]).some(c=>c.statut==="nouvelle"))ring("rappel","Une commande client attend d'être acceptée");},45000);
+// Propriétaire = seul à pouvoir modifier ou supprimer ce qui est déjà enregistré.
+function chef(){const A=window.__whAcces;return !A||!A.protege||A.role==="proprietaire";}
+const REFUS_CHEF="🔒 Seul le propriétaire peut modifier ou supprimer une saisie. Ajoutez une nouvelle ligne ou prévenez-le.";
 function uidSafe(){return "c"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 
 /* ---------- utils ---------- */
@@ -505,6 +508,7 @@ function prodIndex(n){const i=(S.tarifs.produits||[]).findIndex(p=>p.nom===n);re
 function banner(){
   if(S.mode==="local") return `<div class="banner">Connexion impossible au serveur. Vérifiez internet puis relancez l'application.</div>`;
   if(readOnly) return `<div class="banner">Lecture seule : vous pouvez consulter mais pas modifier.</div>`;
+  if(!chef()&&(S.tab==="jour"||S.tab==="carte")) return `<div class="banner" style="background:var(--surface-2);color:var(--muted)">🔒 Mode gestionnaire : vous pouvez ajouter des ventes et des achats. Modifier ou supprimer une saisie est réservé au propriétaire.</div>`;
   return "";
 }
 function renderJour(){
@@ -628,7 +632,7 @@ function renderCarte(){
   const t=S.tarifs;
   return `${banner()}
   <p style="color:var(--muted);font-size:13.5px;margin:4px 2px 12px">Les prix de vente. Un changement de prix s'applique aux nouvelles ventes seulement : les ventes déjà notées gardent leur prix. Touchez 📷 pour photographier un plat (ou 🖼 pour choisir une photo déjà téléchargée sur le téléphone) et écrivez sa composition en dessous : les deux apparaissent sur le menu des clients.</p>
-  <div class="list" id="tarifs">${(t.produits||[]).map((p,i)=>`<div class="trow"><input class="n" id="tn${i}" value="${esc(p.nom)}" aria-label="Nom du produit" ${readOnly?"disabled":""}><input class="p num" id="tp${i}" inputmode="numeric" value="${p.prix}" aria-label="Prix" ${readOnly?"disabled":""}><button class="icon-btn ph ${p.photo?"on":""}" data-photo-t="${i}" aria-label="${p.photo?"Changer la photo":"Ajouter une photo"} de ${esc(p.nom||"ce plat")}" ${readOnly?"disabled":""}>${p.photo?`<img data-dp="${esc(p.photo)}" alt="">`:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</button><button class="icon-btn" data-del-t="${i}" aria-label="Supprimer" ${readOnly?"disabled":""}>✕</button><textarea class="d" id="td${i}" rows="2" maxlength="200" placeholder="Composition, ex. riz gras, poulet braisé, sauce tomate, piment à part" aria-label="Composition de ${esc(p.nom||"ce plat")}" ${readOnly?"disabled":""}>${esc(p.desc||"")}</textarea></div>`).join("")}</div>
+  <div class="list" id="tarifs">${(t.produits||[]).map((p,i)=>`<div class="trow"><input class="n" id="tn${i}" value="${esc(p.nom)}" aria-label="Nom du produit" ${readOnly?"disabled":""}><input class="p num" id="tp${i}" inputmode="numeric" value="${p.prix}" aria-label="Prix" ${readOnly?"disabled":""}><button class="icon-btn ph ${p.photo?"on":""}" data-photo-t="${i}" aria-label="${p.photo?"Changer la photo":"Ajouter une photo"} de ${esc(p.nom||"ce plat")}" ${readOnly?"disabled":""}>${p.photo?`<img data-dp="${esc(p.photo)}" alt="">`:`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`}</button>${chef()?`<button class="icon-btn" data-del-t="${i}" aria-label="Supprimer" ${readOnly?"disabled":""}>✕</button>`:""}<textarea class="d" id="td${i}" rows="2" maxlength="200" placeholder="Composition, ex. riz gras, poulet braisé, sauce tomate, piment à part" aria-label="Composition de ${esc(p.nom||"ce plat")}" ${readOnly?"disabled":""}>${esc(p.desc||"")}</textarea></div>`).join("")}</div>
   <div class="actions"><button class="btn ghost" data-act="add-t" ${readOnly?"disabled":""}>+ Produit</button><button class="btn primary" data-act="save-t" ${readOnly?"disabled":""}>Enregistrer la carte</button></div>
   ${window.__extraCarte?window.__extraCarte():""}
   <h2 class="sec">Bien tenir la caisse</h2>
@@ -900,7 +904,7 @@ function repSheet(k){
     <div class="field"><label for="ra">Quartier / adresse</label><input id="ra" value="${esc(st.adresse)}" maxlength="200" placeholder="Facultatif"></div>
     <div class="field"><label for="ro">Remarque</label><textarea id="ro" rows="2" maxlength="300" placeholder="Ex. : aime le riz gras sans piment, client fidèle">${esc(st.note)}</textarea></div>
     ${f.nb||Object.keys(f.cmds||{}).length?`<p style="color:var(--muted);font-size:13px;margin:10px 2px 0">🛎️ ${Object.keys(f.cmds).length} commande(s) en ligne.</p>`:""}
-    <div class="sheet-actions">${k?`<button class="btn ghost danger" data-del>Supprimer</button>`:`<button class="btn ghost" data-cancel>Annuler</button>`}<button class="btn primary" data-ok>Enregistrer</button></div>`,
+    <div class="sheet-actions">${k&&chef()?`<button class="btn ghost danger" data-del>Supprimer</button>`:`<button class="btn ghost" data-cancel>Annuler</button>`}<button class="btn primary" data-ok>Enregistrer</button></div>`,
   sh=>{
     sh.querySelectorAll("[data-c]").forEach(b=>b.addEventListener("click",()=>{st.cat=b.dataset.c;sh.querySelectorAll("[data-c]").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
     sh.querySelector("[data-cancel]")?.addEventListener("click",closeSheet);
@@ -957,9 +961,9 @@ view.addEventListener("click",e=>{
   else if(a==="rep-add") repSheet();
   else if(a==="add-t"){const tt=readTarifsForm();tt.produits.push({nom:"",prix:0});S.tarifs=tt;render();document.getElementById("tn"+(tt.produits.length-1))?.focus();}
   else if(a==="save-t"){const tt=readTarifsForm();tt.produits=tt.produits.filter(p=>p.nom.trim());saveTarifs(tt);}
-  else if(t.dataset.delT!==undefined){const tt=readTarifsForm();tt.produits.splice(Number(t.dataset.delT),1);S.tarifs=tt;render();toast("Retiré. Pensez à enregistrer la carte.");}
-  else if(t.dataset.editV){const x=getDay(S.date).ventes.find(v=>v.id===t.dataset.editV);if(x&&!readOnly)venteSheet(x);}
-  else if(t.dataset.editA){const x=getDay(S.date).achats.find(v=>v.id===t.dataset.editA);if(x&&!readOnly)achatSheet(x);}
+  else if(t.dataset.delT!==undefined){if(!chef()){toast("🔒 Seul le propriétaire peut retirer un plat de la carte.");return;}const tt=readTarifsForm();tt.produits.splice(Number(t.dataset.delT),1);S.tarifs=tt;render();toast("Retiré. Pensez à enregistrer la carte.");}
+  else if(t.dataset.editV){if(!chef()){toast(REFUS_CHEF);return;}const x=getDay(S.date).ventes.find(v=>v.id===t.dataset.editV);if(x&&!readOnly)venteSheet(x);}
+  else if(t.dataset.editA){if(!chef()){toast(REFUS_CHEF);return;}const x=getDay(S.date).achats.find(v=>v.id===t.dataset.editA);if(x&&!readOnly)achatSheet(x);}
   else if(t.dataset.goto){S.date=t.dataset.goto;S.tab="jour";S.anim=true;document.querySelectorAll(".tabs [data-tab]").forEach(x=>x.setAttribute("aria-selected",x.dataset.tab==="jour"));window.scrollTo(0,0);render();}
 });
 view.addEventListener("change",async e=>{
@@ -983,7 +987,7 @@ async function photoPlat(i){
     const ancienne=p.photo; const key=await O().dishPhoto(f);
     p.photo=key; tt.produits=tt.produits.filter(x=>String(x.nom).trim());
     await saveTarifs(tt);
-    if(ancienne&&ancienne!==key) O().dropDishPhoto(ancienne).catch(()=>{});
+    if(ancienne&&ancienne!==key&&chef()) O().dropDishPhoto(ancienne).catch(()=>{});
     toast("📷 Photo ajoutée au menu des clients");
   }catch(err){toast("Photo non enregistrée. Réessayez.");}
 }
