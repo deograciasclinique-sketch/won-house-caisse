@@ -31,12 +31,26 @@ jobs:
           npm run build
           npx cap sync android
 
+      # Version finale (non débogable). Si les secrets WH_KEYSTORE_BASE64 / WH_KEYSTORE_PASSWORD existent,
+      # l'APK est signé avec cette clé privée ; sinon avec la clé du dépôt (compatibilité avec les téléphones déjà installés).
       - name: Construire l'APK
         working-directory: android
+        env:
+          WH_KEYSTORE_BASE64: ${{ secrets.WH_KEYSTORE_BASE64 }}
+          WH_KEYSTORE_PASSWORD: ${{ secrets.WH_KEYSTORE_PASSWORD }}
+          WH_KEY_ALIAS: ${{ secrets.WH_KEY_ALIAS }}
+          WH_KEY_PASSWORD: ${{ secrets.WH_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Pvc=${{ github.run_number }}
-          cp app/build/outputs/apk/debug/app-debug.apk ../WON-HOUSE-caisse.apk
+          if [ -n "$WH_KEYSTORE_BASE64" ]; then
+            echo "$WH_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wh.keystore"
+            export WH_KEYSTORE_FILE="$RUNNER_TEMP/wh.keystore"
+            echo "Signature avec la clé privée (secrets GitHub)"
+          else
+            unset WH_KEYSTORE_PASSWORD WH_KEY_ALIAS WH_KEY_PASSWORD
+          fi
+          ./gradlew assembleRelease --no-daemon -Pvc=${{ github.run_number }}
+          cp app/build/outputs/apk/release/app-release.apk ../WON-HOUSE-caisse.apk
 
       - uses: actions/upload-artifact@v4
         with:

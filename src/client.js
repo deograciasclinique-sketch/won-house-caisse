@@ -8,8 +8,9 @@ import {
 } from "firebase/firestore";
 
 const cfg = window.FIREBASE_CONFIG;
-const app = initializeApp(cfg);
-const fs = getFirestore(app);
+const DEMO = window.__WH_DEMO__ || null; // aperçu hors ligne (tests uniquement)
+const app = DEMO ? null : initializeApp(cfg);
+const fs = DEMO ? null : getFirestore(app);
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -37,6 +38,8 @@ const I = {
   okGros: SVG('<path d="m5 12 5 5 9-10"/>', 22),
   soleil: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   copier: SVG('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>', 18),
+  partager: SVG('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>', 18),
+  refaire: SVG('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>', 18),
 };
 
 function ico(n) {
@@ -99,6 +102,14 @@ function lire(k) { try { return localStorage.getItem(k) || ""; } catch (e) { ret
 function ecrire(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function lireCommandes() { try { return JSON.parse(localStorage.getItem("whc-commandes") || "[]"); } catch (e) { return []; } }
 function garderCommande(c) { ST.commandes = [c, ...ST.commandes.filter(x => x.id !== c.id)].slice(0, 10); ecrire("whc-commandes", JSON.stringify(ST.commandes)); }
+// Anti-abus : pas plus d'une commande par minute ni de 4 commandes en 30 minutes depuis ce téléphone.
+function tropDeCommandes() {
+  const now = Date.now(), recentes = ST.commandes.filter(c => now - (c.at || 0) < 30 * 60000);
+  if (recentes.some(c => now - (c.at || 0) < 60000)) return "Votre commande vient de partir. Attendez une minute avant d'en envoyer une autre.";
+  if (recentes.length >= 4) return "Beaucoup de commandes en peu de temps. Appelez le restaurant si vous voulez en ajouter.";
+  return "";
+}
+const chiffres = (t) => String(t || "").replace(/\D/g, "");
 
 /* ---------------- produits et groupes (ex. « Panini 500 / 700 / 1000 » → un seul plat avec des tailles) ---------------- */
 const produits = () => (ST.menu?.produits || []).filter(p => p && p.nom);
@@ -129,7 +140,7 @@ function groupes() {
 }
 const groupeDe = (nom) => groupes().find(g => g.nom === nom || g.variantes.some(v => v.nom === nom));
 
-const lignes = () => produits().filter(p => ST.panier[p.nom] > 0 && dispo(p)).map(p => ({ produit: p.nom, prix: Number(p.prix) || 0, qte: ST.panier[p.nom] }));
+const lignes = () => produits().filter(p => ST.panier[p.nom] > 0 && dispo(p)).map(p => ({ produit: String(p.nom).slice(0, 80), prix: Math.round(Number(p.prix) || 0), qte: Math.round(ST.panier[p.nom]) }));
 const total = () => lignes().reduce((t, l) => t + l.prix * l.qte, 0);
 const nbArticles = () => lignes().reduce((t, l) => t + l.qte, 0);
 
@@ -157,7 +168,7 @@ function chargerPhotos() { document.querySelectorAll("img[data-ph]").forEach(img
 /* ---------------- rendu ---------------- */
 function render() {
   const v = $("#vue");
-  if (!ST.menu) { v.innerHTML = `<div class="vide">${ST.err ? esc(ST.err) : "Chargement du menu…"}</div>`; barre(); return; }
+  if (!ST.menu) { v.innerHTML = ST.err ? `<div class="vide">${esc(ST.err)}</div>` : squelette(); barre(); return; }
   if (ST.vue === "menu") v.innerHTML = vueMenu();
   if (ST.vue === "panier") v.innerHTML = vuePanier();
   if (ST.vue === "suivi") v.innerHTML = vueSuivi();
@@ -165,6 +176,10 @@ function render() {
   barre(); fiche(); chargerPhotos();
 }
 
+function squelette() {
+  return `<div class="top"><div class="brand"><img class="logo-img" src="icon-192.png" alt="" width="44" height="44"><div><b>WON HOUSE</b><span class="statut" style="color:var(--muted)">Ouverture du menu…</span></div></div></div>
+  <div class="sk" aria-busy="true" aria-label="Chargement du menu"><i class="sk-t"></i><i class="sk-v"></i><div class="sk-g"><i></i><i></i><i></i><i></i></div></div>`;
+}
 function vueMenu() {
   const ferme = !ST.menu.ouvert;
   const gs = groupes();
@@ -174,7 +189,7 @@ function vueMenu() {
   return `
   <header class="top">
     <div class="brand">
-      <div class="mark" aria-hidden="true">WH</div>
+      <img class="logo-img" src="icon-192.png" alt="" width="44" height="44">
       <div><b>WON HOUSE</b><span class="statut ${ferme ? "ferme" : ""}"><i></i>${ferme ? "Commandes fermées pour le moment" : "Ouvert · on prend vos commandes"}</span></div>
     </div>
     <div style="display:flex;gap:8px">
@@ -377,8 +392,9 @@ function vueSuivi() {
   <p class="note pad">${esc(c.mode || "")}${c.table ? " · table " + esc(c.table) : ""}${c.adresse ? " · " + esc(c.adresse) : ""}</p>
   <div class="duo">
     ${ST.menu?.tel ? `<a class="lien" href="tel:${esc(ST.menu.tel)}">${I.tel} Appeler</a>` : `<button class="lien" data-vue="mes">Mes commandes</button>`}
-    <button class="lien noir" data-vue="menu">Recommander</button>
-  </div>`;
+    <button class="lien noir" data-refaire="${esc(ST.suiviId || "")}">${I.refaire} Recommander</button>
+  </div>
+  <div class="pad" style="margin-top:10px"><button class="lien" data-partager>${I.partager} Partager le reçu</button></div>`;
 }
 
 function blocPayer(c) {
@@ -413,7 +429,7 @@ function vueMes() {
   return `
   <header class="entete"><button class="rond" data-vue="menu" aria-label="Retour au menu">${I.retour}</button><h1>Mes commandes</h1></header>
   <div class="sec" style="margin-top:14px">
-  ${ST.commandes.length ? ST.commandes.map(c => `<button class="mes" data-suivre="${esc(c.id)}"><b>N° ${esc(c.code)}</b><span>${new Date(c.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${F(c.total)}</span></button>`).join("") : `<div class="vide">Pas encore de commande.</div>`}
+  ${ST.commandes.length ? ST.commandes.map(c => `<div class="mes-l"><button class="mes" data-suivre="${esc(c.id)}"><span class="mes-t"><b>N° ${esc(c.code)}</b><span>${new Date(c.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${c.items && c.items.length ? " · " + esc(c.items.map(l => l.qte + " " + l.produit).join(", ")) : ""}</span></span><b class="disp">${F(c.total)}</b></button>${c.items && c.items.length && ST.menu?.ouvert ? `<button class="refaire" data-refaire="${esc(c.id)}" aria-label="Recommander la commande ${esc(c.code)}">${I.refaire}</button>` : ""}</div>`).join("") : `<div class="vide">Pas encore de commande.</div>`}
   </div>`;
 }
 
@@ -559,7 +575,10 @@ async function envoyer() {
   if (form.mode === "livraison" && !form.pos && !form.adresse.trim()) { ST.err = "Pour la livraison, partagez votre position ou écrivez un repère."; render(); return; }
   if (operateurs().length && !form.paie) { ST.err = "Choisissez le paiement : Mobile Money ou espèces."; render(); return; }
   if (!form.nom.trim()) { ST.err = "Indiquez votre nom pour qu'on vous appelle quand c'est prêt."; render(); return; }
-  if (form.mode === "livraison" && !form.tel.trim()) { ST.err = "Pour la livraison, indiquez votre téléphone."; render(); return; }
+  if (form.mode === "livraison" && chiffres(form.tel).length < 8) { ST.err = "Pour la livraison, indiquez un numéro de téléphone complet (8 chiffres)."; render(); return; }
+  if (form.tel.trim() && chiffres(form.tel).length < 8) { ST.err = "Le numéro de téléphone semble incomplet (8 chiffres)."; render(); return; }
+  if (items.length > 20) { ST.err = "20 plats différents au maximum par commande."; render(); return; }
+  const abus = tropDeCommandes(); if (abus) { ST.err = abus; render(); return; }
   ecrire("whc-nom", form.nom.trim()); ecrire("whc-tel", form.tel.trim());
   if (!form.payNum.trim()) form.payNum = form.tel.trim();
   const ref = doc(collection(fs, "commandes"));
@@ -568,7 +587,7 @@ async function envoyer() {
   const totalPlats = items.reduce((t, l) => t + l.prix * l.qte, 0);
   const mobile = form.paie === "mobile" && operateurs().length > 0;
   const data = {
-    items, total: totalPlats, frais: L.frais, distanceKm: L.km, aPayer: totalPlats + L.frais,
+    items, total: totalPlats, frais: Math.round(L.frais), distanceKm: L.km, aPayer: totalPlats + Math.round(L.frais),
     position: form.mode === "livraison" && form.pos ? form.pos : null,
     paiement: { mode: mobile ? "mobile" : "especes", operateur: "", numero: "", ref: "", etat: "attente" },
     nom: form.nom.trim().slice(0, 60), tel: form.tel.trim().slice(0, 30),
@@ -579,7 +598,7 @@ async function envoyer() {
   ST.envoi = true; render();
   try {
     await Promise.race([setDoc(ref, data), new Promise((_, ko) => setTimeout(() => ko(new Error("délai")), 20000))]);
-    garderCommande({ id: ref.id, code, total: data.aPayer, at: Date.now() });
+    garderCommande({ id: ref.id, code, total: data.aPayer, at: Date.now(), items: items.map(l => ({ produit: l.produit, qte: l.qte })) });
     ST.panier = {}; form.note = ""; ST.envoi = false;
     if (navigator.vibrate) navigator.vibrate(80);
     audio(); demanderNotif(); // autorise le son et les notifications pour les étapes suivantes
@@ -594,6 +613,26 @@ async function envoyer() {
   }
 }
 
+// Recommander : remet les mêmes plats (encore disponibles) dans le panier.
+function refaire(id) {
+  const c = ST.commandes.find(x => x.id === id);
+  const items = (c && c.items) || (ST.suiviId === id && ST.suivi && ST.suivi.items) || [];
+  if (!ST.menu?.ouvert) { toast("Les commandes sont fermées pour le moment"); return; }
+  let n = 0; ST.panier = {};
+  items.forEach(l => { const p = parNom(l.produit); if (p && dispo(p)) { ST.panier[p.nom] = Math.min(50, Number(l.qte) || 1); n++; } });
+  stopSuivi && stopSuivi(); stopSuivi = null;
+  if (!n) { ST.vue = "menu"; render(); toast("Ces plats ne sont plus disponibles aujourd'hui"); return; }
+  ST.vue = "panier"; render(); scrollTo(0, 0);
+  if (n < items.length) toast("Certains plats ne sont plus disponibles");
+}
+// Reçu à envoyer (WhatsApp, SMS…) : numéro, plats, total.
+function partagerRecu() {
+  const c = ST.suivi; if (!c) return;
+  const txt = `🧾 WON HOUSE — commande n° ${c.code}\n` + (c.items || []).map(l => `• ${l.qte} × ${l.produit} — ${F(l.qte * l.prix)}`).join("\n")
+    + (c.frais ? `\n• Livraison — ${F(c.frais)}` : "") + `\nTotal : ${F(c.aPayer ?? c.total)}\n` + (c.mode || "") + (c.table ? " · table " + c.table : "") + `\nMenu : ${location.origin + location.pathname}`;
+  if (navigator.share) navigator.share({ title: "WON HOUSE", text: txt }).catch(() => {});
+  else window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
 function ajouter(nom, n) {
   const p = parNom(nom); if (!p || !dispo(p) || !ST.menu?.ouvert) return;
   ST.panier[nom] = Math.max(0, Math.min(50, (ST.panier[nom] || 0) + n));
@@ -601,7 +640,7 @@ function ajouter(nom, n) {
 
 document.addEventListener("click", (e) => {
   if (e.target.matches("[data-voile]")) { ST.fiche = null; fiche(); return; }
-  const t = e.target.closest("[data-plus],[data-moins],[data-vue],[data-mode],[data-envoyer],[data-suivre],[data-geo],[data-payopt],[data-op],[data-copier],[data-paye],[data-rub],[data-ouvrir],[data-fermer],[data-taille],[data-fq],[data-fajout]");
+  const t = e.target.closest("[data-plus],[data-moins],[data-vue],[data-mode],[data-envoyer],[data-suivre],[data-geo],[data-payopt],[data-op],[data-copier],[data-paye],[data-refaire],[data-partager],[data-rub],[data-ouvrir],[data-fermer],[data-taille],[data-fq],[data-fajout]");
   if (!t) return;
   const d = t.dataset;
   if (d.fermer !== undefined) { ST.fiche = null; fiche(); return; }
@@ -618,6 +657,8 @@ document.addEventListener("click", (e) => {
   if (d.op) { lireForm(); form.op = d.op; render(); return; }
   if (d.copier) { const n = d.copier; (navigator.clipboard ? navigator.clipboard.writeText(n) : Promise.reject()).then(() => toast("Numéro copié"), () => { t.textContent = n; }); return; }
   if (d.paye !== undefined) { declarerPaiement(); return; }
+  if (d.refaire !== undefined) { refaire(d.refaire); return; }
+  if (d.partager !== undefined) { partagerRecu(); return; }
   if (d.plus) { lireForm(); ajouter(d.plus, 1); render(); }
   else if (d.moins) { lireForm(); ST.panier[d.moins] = Math.max(0, (ST.panier[d.moins] || 0) - 1); render(); }
   else if (d.mode) { lireForm(); form.mode = d.mode; ST.err = ""; render(); }
@@ -837,7 +878,8 @@ document.addEventListener("click", (e) => {
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 
 /* ---------------- démarrage ---------------- */
-onSnapshot(doc(fs, "public", "menu"), (s) => {
+if (DEMO) { setTimeout(() => { ST.menu = DEMO.menu; render(); if (DEMO.accueil) ouvrirAccueil(); }, DEMO.delai || 0); }
+else onSnapshot(doc(fs, "public", "menu"), (s) => {
   ST.menu = s.exists() ? s.data() : { produits: [], ouvert: false };
   ST.err = "";
   if (ST.vue === "panier") lireForm();

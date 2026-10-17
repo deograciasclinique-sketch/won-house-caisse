@@ -28,12 +28,24 @@ Les clients voient **uniquement le menu** et **commandent**, sans installer d'ap
   « Ouvrir Orange Money » (le code s'affiche dans son téléphone), envoie le montant au numéro du restaurant,
   puis recopie la référence du SMS. Le gestionnaire vérifie le SMS reçu et touche « Paiement reçu » ou « Pas reçu ».
   Le client ne peut jamais marquer lui-même un paiement comme reçu. Numéros, nom et codes : onglet Commandes → Paiement Mobile Money.
-- **Sécurité** (`firestore.rules`) : un client peut seulement lire le menu, créer une commande valide quand les commandes
-  sont ouvertes, et lire SA commande grâce à son numéro secret. Il ne voit jamais les ventes, achats, caisse ni les autres commandes.
+- **Sécurité des commandes** (`firestore.rules`) : un client peut seulement lire le menu, envoyer une commande valide quand les commandes
+  sont ouvertes (le serveur recalcule le total : impossible de payer moins que ses plats), et lire SA commande grâce à son numéro secret.
+  Il ne voit jamais les ventes, achats, caisse ni les autres commandes. Pas plus d'une commande par minute depuis le même téléphone.
 
-**À faire une seule fois :**
+## Sécurité de la caisse
+- **Équipe autorisée** : seuls les e-mails inscrits dans *Carte → Équipe et accès* peuvent ouvrir la caisse
+  (rôles **propriétaire** et **gestionnaire**). Un compte retiré perd l'accès tout de suite et la caisse est effacée de son téléphone.
+- **Code secret à 4 chiffres** sur chaque téléphone : demandé à l'ouverture et après 2 minutes hors de l'application.
+  5 codes faux → attente ; 10 codes faux → le téléphone est déconnecté et vidé. « Code oublié » → reconnexion par e-mail.
+- **Déconnexion** = effacement de la copie des données gardée sur le téléphone.
+- **APK version finale** : non débogable, pas de sauvegarde Google / transfert des données, pas de journal, connexions chiffrées seulement.
+
+**À faire une seule fois (dans cet ordre) :**
 1. Console Firebase → Firestore Database → **Règles** : coller le contenu de `firestore.rules` → **Publier**.
-2. (Facultatif) GitHub → dépôt → **Settings → Pages** → Source : **GitHub Actions**. Sans ce réglage, le menu marche aussi : le lien ouvre `index.html` à la racine, qui mène au dossier `client/` (déjà construit et enregistré dans le dépôt). Après une modification de `src/client.js`, lancer `npm run build` et enregistrer aussi `client/client.js`.
+2. Console Firebase → Authentication → **Settings → User actions** : décocher **Enable create (sign-up)**
+   (personne ne peut se créer un compte tout seul ; le propriétaire crée les comptes dans Users).
+3. Dans l'application, le propriétaire : *Carte → Équipe et accès → 🔒 Protéger la caisse*, puis ajoute les e-mails de l'équipe.
+4. (Facultatif) GitHub → dépôt → **Settings → Pages** → Source : **GitHub Actions**. Sans ce réglage, le menu marche aussi : le lien ouvre `index.html` à la racine, qui mène au dossier `client/` (déjà construit et enregistré dans le dépôt). Après une modification de `src/client.js`, lancer `npm run build` et enregistrer aussi `client/client.js`.
 
 ## Menu et partage
 Le bouton ☰ en haut à droite ouvre le menu : sections, synchronisation, et

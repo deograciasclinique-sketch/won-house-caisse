@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#7A1726">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://api.github.com; frame-src https://*.firebaseapp.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <script src="config.js"></script>
 <script src="shim.js"></script>
@@ -57,12 +59,21 @@ button{cursor:pointer}
 /* commandes clients */
 .cmd-head{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin:4px 0 12px;box-shadow:var(--shadow)}
 .cmd-head .t{flex:1}.cmd-head .t b{display:block;font-family:var(--display);font-size:15.5px}.cmd-head .t small{color:var(--muted);font-size:12.5px}
+.svc{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:8px;margin:0 0 12px}
+.svc div{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 12px;box-shadow:var(--shadow)}
+.svc b{display:block;font-family:var(--display);font-size:19px;line-height:1.2;white-space:nowrap}
+.svc span{font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.svc div:first-child b{color:var(--accent)}
 .switch{border:0;border-radius:99px;padding:8px 14px;font-weight:800;font-size:13px}
 .switch.on{background:var(--good-soft);color:var(--good)}.switch.off{background:var(--bad-soft);color:var(--bad)}
 .cmd{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow)}
 .cmd.neuve{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .cmd .h{display:flex;align-items:baseline;gap:8px}
 .cmd .code{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.08em;color:var(--accent)}
+.cmd .age{font-size:12px;font-weight:800;padding:3px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted);margin-left:auto;white-space:nowrap}
+.cmd .age.warn{background:var(--warn-soft);color:var(--warn)}.cmd .age.bad{background:var(--bad-soft);color:var(--bad)}
+@media (prefers-reduced-motion:no-preference){.cmd .age.bad{animation:agePulse 1.6s ease-in-out infinite}@keyframes agePulse{50%{opacity:.55}}}
+.cmd .age+.when{margin-left:6px}
 .cmd .when{margin-left:auto;color:var(--muted);font-size:12.5px;white-space:nowrap}
 .cmd .who{font-weight:700;margin-top:2px}
 .cmd .who a{color:var(--accent);text-decoration:none}
@@ -641,6 +652,8 @@ function openMenu(){
   openSheet(`<h3>Menu</h3><div class="menu-list">
     ${nav.map(([t,i,l,d])=>`<button class="menu-item" data-go="${t}"><span class="mi">${i}</span><span>${l}<small>${d}</small></span></button>`).join("")}
     <button class="menu-item" data-sync><span class="mi">🔄</span><span>Synchronisation<small>État de l'envoi, téléphones reliés</small></span></button>
+    <button class="menu-item" data-equipe><span class="mi">👥</span><span>Équipe et accès<small>${window.__whAcces&&window.__whAcces.protege?"Caisse protégée · rôle : "+(window.__whAcces.role==="proprietaire"?"propriétaire":"gestionnaire"):"⚠ Caisse pas encore protégée"}</small></span></button>
+    ${window.__whLock?`<button class="menu-item" data-lock><span class="mi">🔒</span><span>Verrouiller maintenant<small>Le code secret sera demandé</small></span></button>`:""}
     <div class="menu-sep"></div>
     <button class="menu-item wa" data-share="apk"><span class="mi">${WA_ICON}</span><span>Envoyer l'application par WhatsApp<small>Le fichier d'installation, même sans internet</small></span></button>
     <button class="menu-item wa" data-share="link"><span class="mi">🔗</span><span>Envoyer le lien de téléchargement<small>Message léger avec le lien de la dernière version</small></span></button>
@@ -648,6 +661,8 @@ function openMenu(){
     if(A&&A.version) A.version().then(v=>{const f=sh.querySelector("#menu-ver");if(v&&v.version&&f)f.textContent="WON HOUSE · version "+v.version;});
     sh.addEventListener("click",async e=>{
       const go=e.target.closest("[data-go]"),sy=e.target.closest("[data-sync]"),share=e.target.closest("[data-share]");
+      if(e.target.closest("[data-lock]")){closeSheet();window.__whLock&&window.__whLock();return;}
+      if(e.target.closest("[data-equipe]")){closeSheet();goTab("carte");setTimeout(()=>{const h=[...document.querySelectorAll("h2.sec")].find(x=>x.textContent.trim().startsWith("Équipe"));h&&h.scrollIntoView({behavior:"smooth"});},350);return;}
       if(go){closeSheet();goTab(go.dataset.go);}
       else if(sy){closeSheet();document.querySelector('.tabs [data-tab="carte"]')?.click();setTimeout(()=>document.getElementById("wh-diag")?.scrollIntoView({behavior:"smooth"}),300);}
       else if(share){
@@ -1015,6 +1030,7 @@ function syncMenu(create){
     O().publishMenu({produits,vedette:top,indispo:(S.pub.indispo||[]).filter(n=>noms.has(n))});
   }
 }
+setInterval(()=>{if(S.tab==="commandes"&&!sheetEl&&!(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)))render();},30000);
 function updateBadge(){const b=document.getElementById("cmd-badge");if(!b)return;const n=(S.cmds||[]).filter(c=>c.statut==="nouvelle").length;b.hidden=!n;b.textContent=n;}
 // Sonneries : "nouvelle" commande (forte, 2 fois), "paiement" déclaré (caisse), "rappel" (commande pas encore acceptée).
 // Si l'application est en arrière-plan, une notification Android avec son s'affiche aussi.
@@ -1029,6 +1045,11 @@ function sameDay(ts,iso){return toISO(new Date(ts))===iso;}
 function cmdCard(c){
   const prix={};(S.tarifs.produits||[]).forEach(p=>prix[p.nom]=Number(p.prix)||0);
   const ecart=(c.items||[]).some(l=>prix[l.produit]!==undefined&&prix[l.produit]!==Number(l.prix));
+  const somme=(c.items||[]).reduce((t,l)=>t+(Number(l.qte)||0)*(Number(l.prix)||0),0);
+  const totalFaux=somme!==(Number(c.total)||0)||(Number(c.aPayer??c.total)||0)!==(Number(c.total)||0)+(Number(c.frais)||0);
+  const attente=Math.max(0,Math.floor((Date.now()-c.at)/60000));
+  const enAttente=c.statut==="nouvelle"||c.statut==="acceptee"||c.statut==="prete";
+  const age=enAttente?`<span class="age ${c.statut==="nouvelle"?(attente>=5?"bad":attente>=2?"warn":""):(attente>=30?"bad":attente>=20?"warn":"")}">⏱ ${attente<1?"à l'instant":attente<60?attente+" min":Math.floor(attente/60)+" h "+String(attente%60).padStart(2,"0")}</span>`:"";
   const inconnu=(c.items||[]).some(l=>prix[l.produit]===undefined);
   const tel=c.tel?String(c.tel).replace(/[^\d+]/g,""):"";
   const aPayer=Number(c.aPayer??c.total)||0, pay=c.paiement||{mode:"especes"};
@@ -1047,7 +1068,7 @@ function cmdCard(c){
     prete:`<button class="btn primary small" data-cmd="servie" data-id="${c.id}">💰 ${c.mode==="livraison"?"Livrée et payée":"Servie et payée"}</button>`,
   }[c.statut]||"";
   return `<div class="cmd ${c.statut==="nouvelle"?"neuve":""}">
-    <div class="h"><span class="code">n° ${esc(c.code||"")}</span><span class="st ${esc(c.statut)}">${CMD_LABEL[c.statut]||esc(c.statut)}</span><span class="when">${esc(hhmm(c.at))}${sameDay(c.at,todayISO())?"":" · "+esc(new Date(c.at).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}))}</span></div>
+    <div class="h"><span class="code">n° ${esc(c.code||"")}</span><span class="st ${esc(c.statut)}">${CMD_LABEL[c.statut]||esc(c.statut)}</span>${age}<span class="when">${esc(hhmm(c.at))}${sameDay(c.at,todayISO())?"":" · "+esc(new Date(c.at).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"}))}</span></div>
     <div class="who">${esc(c.nom||"Client")}${tel?` · <a href="tel:${esc(tel)}">📞 ${esc(c.tel)}</a>`:""}</div>
     <span class="mode-tag">${ou}</span>${c.adresse?`<div class="noteC">📍 ${esc(c.adresse)}</div>`:""}
     ${c.position?`<a class="btn ghost small maplink" href="https://www.google.com/maps/dir/?api=1&destination=${c.position.lat},${c.position.lng}" target="_blank" rel="noopener">🗺️ Itinéraire vers le client${c.distanceKm?" · "+esc(c.distanceKm)+" km":""}</a>`:""}
@@ -1055,6 +1076,7 @@ function cmdCard(c){
     ${payHtml}
     ${fraisAttendu!==null&&Number(c.frais)!==fraisAttendu?`<div class="warn">⚠ Frais de livraison attendus : ${F(fraisAttendu)} (le client a ${F(c.frais||0)}). Vérifiez avec lui.</div>`:""}
     ${c.note?`<div class="noteC">📝 ${esc(c.note)}</div>`:""}
+    ${totalFaux?`<div class="warn">⚠ Le total envoyé ne correspond pas aux plats (${F(somme)}). Encaissez le montant juste.</div>`:""}
     ${ecart||inconnu?`<div class="warn">⚠ ${inconnu?"Un plat n'est plus sur la carte.":"Un prix est différent de la carte actuelle."} Vérifiez avec le client.</div>`:""}
     ${c.statut==="servie"&&c.venteDate?`<div class="noteC">✓ Enregistrée dans les ventes du ${esc(parseISO(c.venteDate).toLocaleDateString("fr-FR"))}</div>`:""}
     ${c.statut==="refusee"&&c.motif?`<div class="noteC">Motif : ${esc(c.motif)}</div>`:""}
@@ -1074,6 +1096,7 @@ function renderCommandes(){
   return `${banner()}
   <div class="cmd-head"><div class="t"><b>${ouvert?"Commandes ouvertes":"Commandes fermées"}</b><small>${ouvert?"Les clients peuvent commander depuis le menu en ligne.":"Les clients voient le menu mais ne peuvent pas commander."}</small></div>
     <button class="switch ${ouvert?"on":"off"}" data-cmd="ouvrir" ${readOnly||!pub?"disabled":""}>${ouvert?"● Ouvert":"○ Fermé"}</button></div>
+  <div class="svc" aria-label="Service en cours"><div><b class="num">${aTraiter.length}</b><span>à traiter</span></div><div><b class="num">${enCours.length}</b><span>en cuisine</span></div><div><b class="num">${F(caJour)}</b><span>encaissé en ligne</span></div></div>
   <button class="btn ghost" style="width:100%;margin:0 0 14px" data-cmd="lien">📲 Lien et QR code du menu client</button>
   ${S.cmdErr?`<div class="banner">${esc(S.cmdErr)}</div>`:""}
   ${S.cmds===null&&!S.cmdErr?`<div class="empty">Chargement des commandes…</div>`:""}

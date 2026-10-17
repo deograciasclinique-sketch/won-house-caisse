@@ -1,75 +1,146 @@
 rules_version = '2';
+// WON HOUSE — règles de sécurité Firestore (à coller dans Console Firebase → Firestore Database → Règles → Publier).
+//
+// Qui peut faire quoi :
+//  • Clients (sans compte) : lire le menu public, envoyer une commande valide quand les commandes sont ouvertes,
+//    suivre LEUR commande grâce à son numéro secret, déclarer leur paiement Mobile Money. Rien d'autre.
+//  • Équipe : seulement les e-mails inscrits dans « Équipe et accès » (document acces/equipe).
+//      - gestionnaire : caisse, commandes, carte, répertoire ;
+//      - propriétaire : tout, plus la gestion de l'équipe et les suppressions définitives.
+//  • Tant que la liste de l'équipe n'est pas encore créée, tout compte connecté est accepté (comme avant) :
+//    le propriétaire l'active une fois dans l'application (Carte → Équipe et accès → Protéger la caisse).
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // L'équipe du restaurant = personnes connectées avec un compte créé par le propriétaire.
-    function equipe() { return request.auth != null; }
+    /* ---------- équipe ---------- */
+    function connecte() { return request.auth != null; }
+    function monEmail() { return request.auth.token.get('email', ''); }
+    function accesRef() { return /databases/$(database)/documents/acces/equipe; }
+    function protege() { return exists(accesRef()); }
+    function monRole() { return get(accesRef()).data.membres.get(monEmail(), ''); }
+    function membre() { return connecte() && (!protege() || monRole() in ['proprietaire', 'gestionnaire']); }
+    function proprietaire() { return connecte() && (!protege() || monRole() == 'proprietaire'); }
 
     function texte(v, max) { return v is string && v.size() <= max; }
+    function entier(v, min, max) { return v is int && v >= min && v <= max; }
 
+    // Liste de l'équipe : { membres: { "email": "proprietaire" | "gestionnaire" }, ... }
+    function listeValide(d) {
+      return d.membres is map && d.membres.size() >= 1 && d.membres.size() <= 30
+        && d.membres.get(monEmail(), '') == 'proprietaire'; // on ne peut jamais s'en retirer soi-même
+    }
+    match /acces/equipe {
+      allow read: if membre();
+      allow create: if connecte() && !protege() && monEmail() != '' && listeValide(request.resource.data);
+      allow update: if proprietaire() && listeValide(request.resource.data);
+      allow delete: if false; // supprimer la liste ouvrirait la caisse à tout compte : interdit
+    }
+
+    /* ---------- données de la caisse (réservées à l'équipe) ---------- */
+    match /jours/{jour} {
+      allow read, create, update: if membre();
+      allow delete: if proprietaire();
+    }
+    match /config/{id} {
+      allow read, write: if membre();
+    }
+    match /photos/{id} {
+      allow read, create, update: if membre();
+      allow delete: if proprietaire();
+    }
+    match /repertoire/{id} {
+      allow read, create, update: if membre();
+      allow delete: if proprietaire();
+    }
+    // Profil et « téléphone relié » : chacun ne modifie que le sien.
+    match /users/{uid} {
+      allow read: if membre();
+      allow write: if membre() && request.auth.uid == uid;
+    }
+    match /diag/{uid} {
+      allow read: if membre();
+      allow write: if membre() && request.auth.uid == uid;
+    }
+
+    /* ---------- menu public ---------- */
+    match /public/{docId} {
+      allow read: if true;
+      allow write: if membre();
+    }
+
+    /* ---------- commandes des clients ---------- */
     // Position GPS du client (livraison) : facultative.
     function positionValide(p) {
       return p == null || (p is map && p.keys().hasOnly(['lat', 'lng', 'precision'])
         && p.lat is number && p.lng is number && p.lat >= -90 && p.lat <= 90 && p.lng >= -180 && p.lng <= 180);
     }
-
     // Paiement : « mobile » (Orange / Moov Money) ou « especes ».
     function paiementValide(p) {
       return p is map && p.keys().hasOnly(['mode', 'operateur', 'numero', 'ref', 'etat'])
         && p.mode in ['mobile', 'especes']
         && texte(p.operateur, 10) && texte(p.numero, 30) && texte(p.ref, 40);
     }
-
-    // Une commande envoyée par un client depuis la page « menu en ligne ».
+    // Une ligne de commande : { produit, prix, qte } (au plus 20 lignes).
+    function ligneOk(l, i) {
+      return l.size() <= i || (l[i] is map && l[i].keys().hasOnly(['produit', 'prix', 'qte'])
+        && texte(l[i].produit, 80) && l[i].produit.size() > 0
+        && entier(l[i].prix, 0, 100000) && entier(l[i].qte, 1, 50));
+    }
+    function lignesOk(l) {
+      return l is list && l.size() > 0 && l.size() <= 20
+        && ligneOk(l, 0) && ligneOk(l, 1) && ligneOk(l, 2) && ligneOk(l, 3) && ligneOk(l, 4)
+        && ligneOk(l, 5) && ligneOk(l, 6) && ligneOk(l, 7) && ligneOk(l, 8) && ligneOk(l, 9)
+        && ligneOk(l, 10) && ligneOk(l, 11) && ligneOk(l, 12) && ligneOk(l, 13) && ligneOk(l, 14)
+        && ligneOk(l, 15) && ligneOk(l, 16) && ligneOk(l, 17) && ligneOk(l, 18) && ligneOk(l, 19);
+    }
+    function m(l, i) { return l.size() > i ? l[i].prix * l[i].qte : 0; }
+    // Le total est recalculé par le serveur : un client ne peut pas payer moins que ses plats.
+    function sommeLignes(l) {
+      return m(l, 0) + m(l, 1) + m(l, 2) + m(l, 3) + m(l, 4) + m(l, 5) + m(l, 6) + m(l, 7) + m(l, 8) + m(l, 9)
+        + m(l, 10) + m(l, 11) + m(l, 12) + m(l, 13) + m(l, 14) + m(l, 15) + m(l, 16) + m(l, 17) + m(l, 18) + m(l, 19);
+    }
     function commandeValide(d) {
       return d.keys().hasOnly(['items', 'total', 'frais', 'distanceKm', 'aPayer', 'position', 'paiement', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
         && d.keys().hasAll(['items', 'total', 'frais', 'distanceKm', 'aPayer', 'position', 'paiement', 'nom', 'tel', 'mode', 'table', 'adresse', 'note', 'code', 'statut', 'at'])
-        && d.frais is number && d.frais >= 0 && d.frais <= 200000
+        && lignesOk(d.items)
+        && entier(d.total, 0, 1000000) && d.total == sommeLignes(d.items)
+        && entier(d.frais, 0, 200000)
         && d.distanceKm is number && d.distanceKm >= 0 && d.distanceKm <= 300
         && d.aPayer == d.total + d.frais
         && positionValide(d.position)
-        && paiementValide(d.paiement) && d.paiement.etat == 'attente' 
+        && paiementValide(d.paiement) && d.paiement.etat == 'attente'
         && d.statut == 'nouvelle'
         && d.at == request.time
-        && d.items is list && d.items.size() > 0 && d.items.size() <= 30
-        && d.total is number && d.total >= 0 && d.total <= 1000000
         && texte(d.nom, 60) && d.nom.size() > 0
         && texte(d.tel, 30) && texte(d.table, 10) && texte(d.adresse, 200) && texte(d.note, 300) && texte(d.code, 8)
         && d.mode in ['sur place', 'à emporter', 'livraison']
+        && (d.mode != 'livraison' || d.tel.size() >= 8)
         // les commandes doivent être ouvertes par l'équipe
         && get(/databases/$(database)/documents/public/menu).data.ouvert == true;
-    }
-
-    // Menu public : tout le monde le lit, seule l'équipe le modifie.
-    match /public/{docId} {
-      allow read: if true;
-      allow write: if equipe();
     }
 
     // Le client déclare son paiement Mobile Money (il ne peut jamais le marquer « reçu »).
     function declarationPaiement() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paiement'])
+        && resource.data.statut in ['nouvelle', 'acceptee', 'prete']
         && resource.data.paiement.mode == 'mobile'
         && resource.data.paiement.etat in ['attente', 'refuse']
         && paiementValide(request.resource.data.paiement)
         && request.resource.data.paiement.mode == 'mobile'
         && request.resource.data.paiement.etat == 'declare'
         && request.resource.data.paiement.operateur in ['orange', 'moov']
-        && request.resource.data.paiement.ref.size() > 0;
+        && request.resource.data.paiement.ref.size() >= 4;
     }
 
-    // Commandes des clients.
     match /commandes/{id} {
       allow create: if commandeValide(request.resource.data);
       // Le client suit SA commande grâce à son numéro secret (impossible de lister les autres).
       allow get: if true;
-      allow update: if equipe() || declarationPaiement();
-      allow list, delete: if equipe();
+      allow list: if membre();
+      allow update: if membre() || declarationPaiement();
+      allow delete: if proprietaire();
     }
 
-    // Tout le reste (journées, ventes, achats, caisse, photos, carte…) : réservé à l'équipe.
-    match /{document=**} {
-      allow read, write: if equipe();
-    }
+    // Tout le reste est fermé : aucune autre collection n'est accessible.
   }
 }

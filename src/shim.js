@@ -9,7 +9,7 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites,
   doc, collection, getDoc, getDocs, getDocFromServer, getDocsFromServer, disableNetwork, enableNetwork, setDoc, deleteDoc, onSnapshot, writeBatch, limit, query,
-  orderBy,
+  orderBy, terminate, clearIndexedDbPersistence,
 } from "firebase/firestore";
 import QRCode from "qrcode";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
@@ -24,17 +24,52 @@ let readyResolve; const ready = new Promise(r => (readyResolve = r));
 
 /* ---------------- écran de connexion ---------------- */
 const CSS = `
-.wh-login{position:fixed;inset:0;z-index:100;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E);display:flex;align-items:center;justify-content:center;padding:20px;font-family:"Nunito Sans",system-ui,sans-serif}
-.wh-card{background:#fff;color:#1B211E;border-radius:22px;padding:22px 18px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
-.wh-card h1{font:800 22px/1.1 system-ui,sans-serif;letter-spacing:.05em;margin:6px 0 2px;text-align:center}
-.wh-card p{color:#5E6862;text-align:center;margin:0 0 16px;font-size:14px}
-.wh-card label{display:block;font-size:12px;font-weight:700;color:#5E6862;text-transform:uppercase;letter-spacing:.08em;margin:12px 0 5px}
-.wh-card input{width:100%;box-sizing:border-box;border:1px solid #D7DBD4;background:#F3F4F1;border-radius:12px;padding:13px;font-size:16px}
-.wh-card button{width:100%;margin-top:18px;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E)}
+.wh-login{position:fixed;inset:0;z-index:100;overflow:auto;background:#160B0D;background-image:radial-gradient(120% 70% at 0% 0%,rgba(184,53,42,.55),transparent 60%),radial-gradient(90% 60% at 100% 100%,rgba(227,154,30,.35),transparent 60%);display:flex;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top,0px)) 18px calc(20px + env(safe-area-inset-bottom,0px));font-family:"Nunito Sans",system-ui,sans-serif}
+.wh-card{background:#fff;color:#1B211E;border-radius:26px;padding:26px 20px 18px;width:100%;max-width:390px;box-shadow:0 30px 60px rgba(0,0,0,.45)}
+.wh-card h1{font:800 24px/1.1 "Sora",system-ui,sans-serif;letter-spacing:.06em;margin:14px 0 2px;text-align:center}
+.wh-card p{color:#5E6862;text-align:center;margin:0 0 14px;font-size:14px}
+.wh-secure{display:flex;align-items:center;justify-content:center;gap:6px;margin:0 auto 6px;width:max-content;padding:5px 11px;border-radius:99px;background:#E1F1E8;color:#1F7A4D;font-size:12px;font-weight:800;letter-spacing:.02em}
+.wh-card label{display:block;font-size:12px;font-weight:700;color:#5E6862;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 6px}
+.wh-card input{width:100%;box-sizing:border-box;border:1.5px solid #D7DBD4;background:#F7F8F5;border-radius:14px;padding:14px;font-size:16px;color:#1B211E;transition:border-color .15s,background .15s}
+.wh-card input:focus{outline:0;border-color:#B8352A;background:#fff}
+.wh-pw{position:relative}.wh-pw input{padding-right:58px}
+.wh-card .wh-eye{box-shadow:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:auto;margin:0;padding:8px 10px;border-radius:10px;background:transparent;color:#8C1D2B;font-size:13px;font-weight:800}
+.wh-card button{width:100%;margin-top:20px;border:0;border-radius:16px;padding:16px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E);box-shadow:0 10px 22px rgba(140,29,43,.3)}
 .wh-card button:disabled{opacity:.6}
 .wh-card .err{color:#B42318;font-size:13.5px;text-align:center;margin-top:12px;min-height:18px}
-.wh-card .link{background:none;color:#8C1D2B;font-weight:700;font-size:13.5px;padding:8px;margin-top:6px}
-.wh-logo{width:72px;height:72px;border-radius:22px;margin:0 auto;display:grid;place-items:center;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E)}
+.wh-card .link{background:none;box-shadow:none;color:#8C1D2B;font-weight:700;font-size:13.5px;padding:8px;margin-top:4px}
+.wh-foot{text-align:center;color:#8A928D;font-size:11.5px;margin-top:6px}
+.wh-logo{width:76px;height:76px;border-radius:24px;margin:0 auto;display:grid;place-items:center;background:linear-gradient(135deg,#7A1726,#B8352A 55%,#E39A1E);box-shadow:0 12px 26px rgba(140,29,43,.35)}
+/* verrou par code secret */
+.wh-lock{position:fixed;inset:0;z-index:150;background:#160B0D;background-image:radial-gradient(110% 60% at 50% -10%,rgba(184,53,42,.6),transparent 65%);color:#FBF4EE;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(24px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));font-family:"Nunito Sans",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+.wh-lock h2{font:800 21px/1.2 "Sora",system-ui,sans-serif;margin:16px 0 4px;text-align:center}
+.wh-lock p{margin:0;color:#D9C9C2;font-size:14px;text-align:center;min-height:20px}
+.wh-lock .who{font-size:12.5px;color:#B9A49C;margin-top:2px}
+.wh-dots{display:flex;gap:16px;margin:26px 0 8px}
+.wh-dots i{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.55);transition:background .12s,transform .12s}
+.wh-dots i.on{background:#F2C46B;border-color:#F2C46B;transform:scale(1.1)}
+.wh-dots.shake{animation:whShake .4s}
+@keyframes whShake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+.wh-pad{display:grid;grid-template-columns:repeat(3,76px);gap:14px 22px;margin-top:18px}
+.wh-pad button{width:76px;height:76px;border-radius:50%;border:0;background:rgba(255,255,255,.09);color:#fff;font:700 27px "Sora",system-ui,sans-serif;display:grid;place-items:center}
+.wh-pad button:active{background:rgba(255,255,255,.25)}
+.wh-pad button.t{background:transparent;font:700 14px "Nunito Sans",system-ui,sans-serif;color:#E9D7CF}
+.wh-lock .wh-out{margin-top:22px;background:none;border:0;color:#F2C46B;font-weight:800;font-size:14px;padding:10px}
+.wh-lock .err{color:#FFB4A8}
+/* équipe et accès */
+.wh-sec{padding:12px 14px}
+.wh-alarm{background:#FBE7E4;color:#7A1D14;border-radius:14px;padding:12px;font-size:14px;line-height:1.4}
+.wh-safe{background:#E1F1E8;color:#14532D;border-radius:14px;padding:10px 12px;font-size:14px;font-weight:700}
+.wh-mem{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line,#D7DBD4)}
+.wh-mem:first-child{border-top:0}
+.wh-mem .e{flex:1;min-width:0;overflow-wrap:anywhere;font-size:14px;font-weight:700}
+.wh-mem .e small{display:block;font-weight:600;color:var(--muted,#5E6862);font-size:12px}
+.wh-role{font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:99px;background:var(--surface-2,#E9EBE6);white-space:nowrap;border:0;color:inherit}
+.wh-role.p{background:#7A1726;color:#fff}
+.wh-x{width:34px;height:34px;border-radius:10px;border:1px solid var(--line,#D7DBD4);background:transparent;color:var(--bad,#B42318);font-weight:800}
+.wh-add{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.wh-add input{flex:1 1 180px;min-width:0;border:1px solid var(--line,#D7DBD4);background:var(--bg,#F3F4F1);border-radius:12px;padding:11px;font-size:15px;color:inherit}
+.wh-add select{border:1px solid var(--line,#D7DBD4);background:var(--bg,#F3F4F1);border-radius:12px;padding:11px;font-size:14px;color:inherit}
 .wh-cam{position:fixed;inset:0;z-index:200;background:#000;display:flex;flex-direction:column}
 .wh-cam video,.wh-cam img{flex:1;width:100%;height:100%;object-fit:cover;min-height:0}
 .wh-cam .bar{display:flex;align-items:center;justify-content:space-around;padding:16px 10px calc(18px + env(safe-area-inset-bottom,0px));background:rgba(0,0,0,.85)}
@@ -54,17 +89,21 @@ function showLogin(message) {
   let el = document.getElementById("wh-login");
   if (el) return;
   el = document.createElement("div"); el.id = "wh-login"; el.className = "wh-login";
+  try { if (!message) { message = sessionStorage.getItem("wh-msg") || ""; sessionStorage.removeItem("wh-msg"); } } catch (e) {}
   el.innerHTML = `<form class="wh-card" autocomplete="on">
     <div class="wh-logo">${LOGO}</div>
-    <h1>WON HOUSE</h1><p>Caisse du restaurant</p>
-    <label for="wh-email">E-mail</label><input id="wh-email" type="email" autocomplete="username" required>
-    <label for="wh-pass">Mot de passe</label><input id="wh-pass" type="password" autocomplete="current-password" required>
-    <label for="wh-name">Votre prénom</label><input id="wh-name" placeholder="ex. Awa" autocomplete="given-name">
+    <h1>WON HOUSE</h1><p>Caisse et commandes du restaurant</p>
+    <div class="wh-secure">🔒 Accès réservé à l'équipe</div>
+    <label for="wh-email">E-mail</label><input id="wh-email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    <label for="wh-pass">Mot de passe</label><div class="wh-pw"><input id="wh-pass" type="password" autocomplete="current-password" required><button type="button" class="wh-eye" id="wh-eye" aria-label="Afficher le mot de passe">Voir</button></div>
+    <label for="wh-name">Votre prénom</label><input id="wh-name" placeholder="ex. Awa" autocomplete="given-name" maxlength="30">
     <button type="submit" id="wh-go">Se connecter</button>
-    <div class="err" id="wh-err">${message || ""}</div>
+    <div class="err" id="wh-err" role="alert">${esc2(message || "")}</div>
     <button type="button" class="link" id="wh-forgot">Mot de passe oublié ?</button>
+    <div class="wh-foot">Connexion chiffrée · un code secret protège ensuite ce téléphone</div>
   </form>`;
   document.body.appendChild(el);
+  document.getElementById("wh-eye").addEventListener("click", (e) => { const p = document.getElementById("wh-pass"); const v = p.type === "password"; p.type = v ? "text" : "password"; e.target.textContent = v ? "Cacher" : "Voir"; });
   try { document.getElementById("wh-name").value = localStorage.getItem("wh-name") || ""; } catch (e) {}
   el.querySelector("form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -557,7 +596,7 @@ window.__extraCarte = () => {
   const col = ST.state === "ok" ? "#1F7A4D" : ST.state === "error" ? "#B42318" : "#9A6400";
   const lbl = { ok: "✓ Synchronisé avec le serveur", sending: "Envoi en cours…", offline: "Hors ligne : tout est enregistré sur ce téléphone et partira au retour d'internet", error: "Pas synchronisé", init: "Connexion au serveur…" }[ST.state];
   const people = (diagList || []).map(d => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;padding:4px 0"><span>👤 <b>${esc2(d.name || d.email || "?")}</b> <span style="color:#5E6862">${esc2(d.email || "")}</span></span><span style="color:#5E6862;white-space:nowrap">${ago(d.lastSeen)}</span></div>`).join("");
-  return `<h2 class="sec" id="wh-diag">Synchronisation</h2><div class="list" style="padding:12px 14px">
+  return equipeHTML() + `<h2 class="sec" id="wh-diag">Synchronisation</h2><div class="list" style="padding:12px 14px">
     <div style="font-weight:800;color:${col}">${lbl}</div>
     ${waiting() ? `<div style="font-size:13.5px;color:#9A6400;margin-top:6px">${waiting()} saisie(s) en attente d'envoi — elles sont gardées sur ce téléphone, même s'il est éteint.</div>` : ""}
     ${ST.msg ? `<div style="font-size:13.5px;color:#B42318;margin-top:6px">${esc2(ST.msg)}</div>` : ""}
@@ -569,7 +608,8 @@ window.__extraCarte = () => {
   </div>
   <h2 class="sec">Compte</h2><div class="list" style="padding:12px 14px">
     <div style="font-size:14px">Connecté : <b>${esc2(currentUser.email || "")}</b></div>
-    <button class="btn ghost small" style="margin-top:10px" data-wh="logout">Se déconnecter</button>${imp}</div>`;
+    <p style="font-size:12.5px;color:var(--muted);margin:6px 0 0">Se déconnecter efface aussi la copie de la caisse gardée sur ce téléphone.</p>
+    <button class="btn ghost small danger" style="margin-top:10px" data-wh="logout">Se déconnecter de ce téléphone</button>${imp}</div>`;
 };
 async function runTest() {
   testMsg = "Test en cours…"; window.__rerender && window.__rerender();
@@ -584,7 +624,11 @@ async function runTest() {
 }
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-wh]"); if (!b) return;
-  if (b.dataset.wh === "logout") { if (b.dataset.sure) { await signOut(auth); location.reload(); } else { b.dataset.sure = "1"; b.textContent = "Confirmer la déconnexion ?"; } }
+  if (["lock-now", "pin-change", "proteger", "ajouter", "role", "retirer"].includes(b.dataset.wh)) { actionEquipe(b); return; }
+  if (b.dataset.wh === "logout") {
+    if (b.dataset.sure) effacerTelephone("Vous êtes déconnecté. Les données de ce téléphone ont été effacées.");
+    else { b.dataset.sure = "1"; b.textContent = waiting() ? `⚠ ${waiting()} saisie(s) pas encore envoyée(s) seront perdues. Confirmer ?` : "Confirmer la déconnexion ?"; }
+  }
   if (b.dataset.wh === "test") runTest();
   if (b.dataset.wh === "import") {
     b.disabled = true; b.textContent = "Import en cours…";
@@ -596,6 +640,190 @@ document.addEventListener("click", async (e) => {
     } catch (ex) { b.disabled = false; b.textContent = "Échec — réessayer"; setState("error", explain(ex)); testMsg = `<b style="color:#B42318">✗ Import impossible : ${esc2(explain(ex))}</b>`; window.__rerender && window.__rerender(); }
   }
 });
+
+/* ================= SÉCURITÉ =================
+   1) Équipe autorisée : document « acces/equipe » = { membres: { email: "proprietaire" | "gestionnaire" } }.
+      Les règles Firestore refusent tout compte absent de la liste. Si un compte est retiré,
+      ce téléphone est vidé et déconnecté aussitôt.
+   2) Code secret à 4 chiffres sur chaque téléphone : demandé à l'ouverture et après 2 min hors de l'application.
+   3) Déconnexion = effacement des données gardées sur le téléphone. */
+const ACCES = { pret: false, protege: false, membres: {}, role: "" };
+const monEmail = () => String(currentUser?.email || "").toLowerCase();
+let stopAcces = null;
+function watchAcces() {
+  stopAcces && stopAcces();
+  stopAcces = onSnapshot(doc(fs, "acces", "equipe"), { includeMetadataChanges: true }, (s) => {
+    if (!s.exists()) {
+      if (s.metadata.fromCache && !ACCES.pret) return; // on attend la réponse du serveur
+      Object.assign(ACCES, { pret: true, protege: false, membres: {}, role: "proprietaire" });
+    } else {
+      const m = (s.data() || {}).membres || {};
+      Object.assign(ACCES, { pret: true, protege: true, membres: m, role: m[monEmail()] || "" });
+      if (!ACCES.role && !s.metadata.fromCache) return effacerTelephone("Ce compte ne fait plus partie de l'équipe WON HOUSE. Les données de ce téléphone ont été effacées. Demandez au propriétaire de vous ajouter.");
+    }
+    window.__rerender && window.__rerender();
+  }, (e) => {
+    if (e && e.code === "permission-denied") effacerTelephone("Ce compte n'a pas accès à la caisse WON HOUSE. Demandez au propriétaire de vous ajouter dans « Équipe et accès ».");
+  });
+}
+window.__whAcces = ACCES;
+
+// Déconnexion complète : plus de session, plus de copie des données sur ce téléphone.
+let effacement = false;
+async function effacerTelephone(msg) {
+  if (effacement) return; effacement = true;
+  try { if (msg) sessionStorage.setItem("wh-msg", msg); } catch (e) {}
+  try { await signOut(auth); } catch (e) {}
+  try { await terminate(fs); await clearIndexedDbPersistence(fs); } catch (e) {}
+  try { Object.keys(localStorage).filter(k => /^(wh-|wonhouse-|whp-)/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  location.reload();
+}
+
+/* ---------- code secret ---------- */
+const LOCK = { el: null, hiddenAt: 0, apres: 2 * 60 * 1000 };
+const pinKey = () => "wh-pin-" + (currentUser?.uid || "");
+const triesKey = () => "wh-pintry-" + (currentUser?.uid || "");
+const lireJSON = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
+const ecrireJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const pinDispo = () => !!(window.crypto && crypto.subtle && window.TextEncoder);
+async function pinHash(pin, salt) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt + "|" + (currentUser?.uid || "")), iterations: 150000, hash: "SHA-256" }, key, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+const aUnCode = () => !!lireJSON(pinKey());
+function prenom() { try { return localStorage.getItem("wh-name") || ""; } catch (e) { return ""; } }
+
+// mode : "creer" (nouveau code, deux fois), "ouvrir" (déverrouiller), "changer" (nouveau code depuis l'application)
+function ouvrirVerrou(mode) {
+  if (!pinDispo() || !currentUser) return;
+  if (LOCK.el) { if (mode === "creer" || LOCK.el.dataset.mode === mode) return; LOCK.el.remove(); }
+  let saisie = "", premier = "", etape = mode === "ouvrir" ? "ouvrir" : "nouveau";
+  const el = document.createElement("div"); el.className = "wh-lock"; el.dataset.mode = mode; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true");
+  const titre = () => etape === "ouvrir" ? `Bonjour${prenom() ? " " + esc2(prenom()) : ""} 👋` : etape === "nouveau" ? (mode === "changer" ? "Nouveau code secret" : "Créez votre code secret") : "Confirmez le code";
+  const sous = () => etape === "ouvrir" ? "Tapez votre code secret pour ouvrir la caisse" : etape === "nouveau" ? "4 chiffres, à ne donner à personne. Il protège ce téléphone." : "Tapez le même code une deuxième fois";
+  el.innerHTML = `<div class="wh-logo">${LOGO}</div><h2 id="wh-lt"></h2><p id="wh-ls"></p><div class="who">${esc2(currentUser.email || "")}</div>
+    <div class="wh-dots" id="wh-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="err" id="wh-le" role="alert"></p>
+    <div class="wh-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="t" data-k="x">${mode === "changer" ? "Annuler" : ""}</button><button type="button" data-k="0">0</button><button type="button" class="t" data-k="del" aria-label="Effacer">⌫</button></div>
+    ${mode === "ouvrir" ? `<button type="button" class="wh-out" data-k="oubli">Code oublié ? Se reconnecter</button>` : ""}`;
+  document.body.appendChild(el); LOCK.el = el;
+  const maj = (err) => {
+    el.querySelector("#wh-lt").innerHTML = titre(); el.querySelector("#wh-ls").textContent = sous();
+    el.querySelectorAll("#wh-dots i").forEach((d, i) => d.classList.toggle("on", i < saisie.length));
+    el.querySelector("#wh-le").textContent = err || "";
+  };
+  const secoue = (err) => { const d = el.querySelector("#wh-dots"); d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake"); try { navigator.vibrate && navigator.vibrate(180); } catch (e) {} saisie = ""; maj(err); };
+  const fermer = () => { el.remove(); if (LOCK.el === el) LOCK.el = null; };
+  async function valider() {
+    if (etape === "nouveau") {
+      if (/^(\d)\1{3}$/.test(saisie) || ["1234", "4321", "0123", "2580", "1212"].includes(saisie)) return secoue("Code trop facile à deviner. Choisissez-en un autre.");
+      premier = saisie; saisie = ""; etape = "confirmer"; return maj();
+    }
+    if (etape === "confirmer") {
+      if (saisie !== premier) { etape = "nouveau"; premier = ""; return secoue("Les deux codes sont différents. Recommencez."); }
+      const salt = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      ecrireJSON(pinKey(), { salt, hash: await pinHash(saisie, salt) }); ecrireJSON(triesKey(), { n: 0, until: 0 });
+      fermer(); shimToast(mode === "changer" ? "🔒 Nouveau code secret enregistré" : "🔒 Code secret activé sur ce téléphone"); window.__rerender && window.__rerender(); return;
+    }
+    // déverrouillage
+    const t = lireJSON(triesKey()) || { n: 0, until: 0 };
+    if (t.until > Date.now()) return secoue(`Trop d'essais. Patientez ${Math.ceil((t.until - Date.now()) / 1000)} s.`);
+    const p = lireJSON(pinKey());
+    if (p && (await pinHash(saisie, p.salt)) === p.hash) { ecrireJSON(triesKey(), { n: 0, until: 0 }); fermer(); return; }
+    t.n++;
+    if (t.n >= 10) return effacerTelephone("10 codes faux de suite : par sécurité, ce téléphone a été déconnecté et ses données effacées. Reconnectez-vous avec votre e-mail et votre mot de passe.");
+    if (t.n >= 5) t.until = Date.now() + 30000 * Math.pow(2, t.n - 5);
+    ecrireJSON(triesKey(), t);
+    secoue(t.n >= 5 ? `Code faux. Attendez ${Math.round((t.until - Date.now()) / 1000)} s (${10 - t.n} essai(s) avant effacement).` : "Code faux.");
+  }
+  el.addEventListener("click", (e) => {
+    const k = e.target.closest("[data-k]")?.dataset.k; if (!k) return;
+    if (k === "oubli") { if (e.target.dataset.sure) effacerTelephone("Reconnectez-vous avec votre e-mail et votre mot de passe, puis créez un nouveau code."); else { e.target.dataset.sure = "1"; e.target.textContent = "Confirmer : se déconnecter de ce téléphone ?"; } return; }
+    if (k === "x") { if (mode === "changer") fermer(); return; }
+    if (k === "del") { saisie = saisie.slice(0, -1); return maj(); }
+    if (saisie.length < 4) { saisie += k; maj(); if (saisie.length === 4) setTimeout(valider, 120); }
+  });
+  maj();
+}
+window.__whLock = () => { if (aUnCode()) ouvrirVerrou("ouvrir"); else ouvrirVerrou("creer"); };
+function demarrerVerrou() {
+  if (!pinDispo()) return;
+  ouvrirVerrou(aUnCode() ? "ouvrir" : "creer");
+  document.addEventListener("visibilitychange", () => {
+    if (!currentUser) return;
+    if (document.visibilityState === "hidden") LOCK.hiddenAt = Date.now();
+    else if (LOCK.hiddenAt && Date.now() - LOCK.hiddenAt > LOCK.apres && aUnCode()) ouvrirVerrou("ouvrir");
+  });
+}
+
+/* ---------- gestion de l'équipe (onglet Carte) ---------- */
+async function enregistrerEquipe(membres) {
+  const p = setDoc(doc(fs, "acces", "equipe"), { membres, majAt: Date.now(), majBy: monEmail() });
+  await Promise.race([p, new Promise((_, ko) => setTimeout(() => ko({ code: "unavailable", message: "délai dépassé" }), 15000))]);
+}
+const ROLES = { proprietaire: "Propriétaire", gestionnaire: "Gestionnaire" };
+const emailOk = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+function equipeHTML() {
+  const moi = monEmail();
+  const verrou = pinDispo() ? (aUnCode() ? `<div class="wh-safe">🔒 Code secret actif · la caisse se verrouille après 2 min hors de l'application</div>` : `<div class="wh-alarm">Pas encore de code secret sur ce téléphone.</div>`) : "";
+  const tel = `<h2 class="sec">Sécurité de ce téléphone</h2><div class="list wh-sec">${verrou}
+    ${pinDispo() ? (aUnCode() ? `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost small" style="flex:1;margin:0" data-wh="lock-now">🔒 Verrouiller</button><button class="btn ghost small" style="flex:1;margin:0" data-wh="pin-change">Changer le code</button></div>` : `<button class="btn primary small" style="width:100%;margin-top:10px" data-wh="lock-now">🔒 Créer mon code secret</button>`) : ""}</div>`;
+  if (!ACCES.pret) return tel + `<h2 class="sec">Équipe et accès</h2><div class="list wh-sec"><div style="color:var(--muted)">Vérification des accès…</div></div>`;
+  if (!ACCES.protege) {
+    const autres = [...new Set((diagList || []).map(d => String(d.email || "").toLowerCase()).filter(e => e && e !== moi && emailOk(e)))];
+    return tel + `<h2 class="sec">Équipe et accès</h2><div class="list wh-sec">
+      <div class="wh-alarm"><b>⚠ Caisse pas encore protégée.</b> Aujourd'hui, n'importe quel compte créé sur votre projet Firebase pourrait entrer.</div>
+      <p style="font-size:14px;margin:10px 0 4px">En protégeant la caisse, seuls les e-mails inscrits ici pourront l'ouvrir. Vous (<b>${esc2(moi)}</b>) devenez <b>propriétaire</b>.</p>
+      ${autres.length ? `<p style="font-size:13.5px;color:var(--muted);margin:6px 0">Ces téléphones déjà reliés gardent leur accès comme gestionnaires :<br>${autres.map(esc2).join("<br>")}</p>` : ""}
+      <button class="btn primary" style="width:100%;margin-top:10px" data-wh="proteger" data-autres="${esc2(autres.join(","))}">🔒 Protéger la caisse</button></div>`;
+  }
+  const chef = ACCES.role === "proprietaire";
+  const liste = Object.entries(ACCES.membres).sort((a, b) => (a[1] === "proprietaire" ? 0 : 1) - (b[1] === "proprietaire" ? 0 : 1) || a[0].localeCompare(b[0]));
+  const vu = Object.fromEntries((diagList || []).map(d => [String(d.email || "").toLowerCase(), d]));
+  return tel + `<h2 class="sec">Équipe et accès <span>${liste.length} personne${liste.length > 1 ? "s" : ""}</span></h2><div class="list wh-sec">
+    <div class="wh-safe">✓ Caisse protégée · votre rôle : ${ROLES[ACCES.role] || "?"}</div>
+    <div style="margin-top:8px">${liste.map(([e, r]) => `<div class="wh-mem"><span class="e">${esc2(e)}${e === moi ? " (vous)" : ""}<small>${vu[e] ? esc2((vu[e].name ? vu[e].name + " · " : "") + "vu " + ago(vu[e].lastSeen)) : "pas encore connecté"}</small></span>
+      ${chef && e !== moi ? `<button class="wh-role ${r === "proprietaire" ? "p" : ""}" data-wh="role" data-e="${esc2(e)}" aria-label="Changer le rôle de ${esc2(e)}">${ROLES[r] || r} ⇄</button><button class="wh-x" data-wh="retirer" data-e="${esc2(e)}" aria-label="Retirer ${esc2(e)}">✕</button>` : `<span class="wh-role ${r === "proprietaire" ? "p" : ""}">${ROLES[r] || r}</span>`}</div>`).join("")}</div>
+    ${chef ? `<div class="wh-add"><input id="wh-new" type="email" inputmode="email" autocapitalize="off" placeholder="E-mail de la personne" aria-label="E-mail à ajouter"><select id="wh-newr" aria-label="Rôle"><option value="gestionnaire">Gestionnaire</option><option value="proprietaire">Propriétaire</option></select><button class="btn primary small" style="margin:0" data-wh="ajouter">Ajouter</button></div>
+    <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">Créez d'abord son compte dans Firebase → Authentication → Users, puis ajoutez son e-mail ici. Retirer quelqu'un coupe son accès tout de suite et efface la caisse de son téléphone.</p>`
+    : `<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">Seul le propriétaire peut modifier l'équipe.</p>`}
+  </div>`;
+}
+async function actionEquipe(b) {
+  const a = b.dataset.wh, moi = monEmail();
+  try {
+    if (a === "lock-now") { window.__whLock(); return; }
+    if (a === "pin-change") { ouvrirVerrou("changer"); return; }
+    if (a === "proteger") {
+      if (!moi) { shimToast("Ce compte n'a pas d'e-mail."); return; }
+      const membres = { [moi]: "proprietaire" };
+      (b.dataset.autres || "").split(",").filter(emailOk).forEach(e => { membres[e] = "gestionnaire"; });
+      b.disabled = true; b.textContent = "Protection en cours…";
+      await enregistrerEquipe(membres); shimToast("🔒 Caisse protégée : seuls les e-mails de l'équipe peuvent entrer"); return;
+    }
+    if (ACCES.role !== "proprietaire") return;
+    const m = { ...ACCES.membres };
+    if (a === "ajouter") {
+      const e = (document.getElementById("wh-new")?.value || "").trim().toLowerCase();
+      if (!emailOk(e)) { shimToast("E-mail pas valide (ex. nom@gmail.com)."); return; }
+      if (m[e]) { shimToast("Cette personne est déjà dans l'équipe."); return; }
+      m[e] = document.getElementById("wh-newr")?.value === "proprietaire" ? "proprietaire" : "gestionnaire";
+      await enregistrerEquipe(m); shimToast("✓ " + e + " ajouté(e) à l'équipe");
+    } else if (a === "role") {
+      const e = b.dataset.e; if (!m[e] || e === moi) return;
+      m[e] = m[e] === "proprietaire" ? "gestionnaire" : "proprietaire";
+      await enregistrerEquipe(m); shimToast(e + " : " + ROLES[m[e]]);
+    } else if (a === "retirer") {
+      const e = b.dataset.e; if (!m[e] || e === moi) return;
+      if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = "Sûr ?"; b.style.width = "auto"; b.style.padding = "0 8px"; return; }
+      delete m[e]; await enregistrerEquipe(m); shimToast(e + " n'a plus accès à la caisse");
+    }
+  } catch (ex) {
+    shimToast(isOffline(ex) ? "Pas de connexion : la modification de l'équipe demande internet." : "Refusé : " + explain(ex));
+    window.__rerender && window.__rerender();
+  }
+}
 
 /* ---------------- démarrage ---------------- */
 function missingConfig() {
@@ -618,7 +846,9 @@ if (!cfg || !cfg.apiKey) {
     currentUser = u;
     if (u) {
       hideLogin(); readyResolve(true);
-      watchStatus();
+      watchStatus(); watchAcces();
+      const go = () => demarrerVerrou();
+      document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", go) : go();
     } else {
       const show = () => showLogin();
       document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", show) : show();

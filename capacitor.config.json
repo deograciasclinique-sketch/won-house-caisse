@@ -2,6 +2,10 @@
   "appId": "com.wonhouse.caisse",
   "appName": "WON HOUSE",
   "webDir": "www",
-  "android": { "allowMixedContent": false },
-  "server": { "androidScheme": "https" }
+  "loggingBehavior": "none",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "server": { "androidScheme": "https", "cleartext": false }
 }

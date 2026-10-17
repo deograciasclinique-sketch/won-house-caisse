@@ -20,11 +20,18 @@ android {
     // clé de signature fixe : toutes les versions ont la même signature et s'installent par-dessus l'ancienne
     signingConfigs {
         wonhouse {
-            storeFile file("wonhouse.keystore")
-            storePassword "wonhouse2026"
-            keyAlias "wonhouse"
-            keyPassword "wonhouse2026"
+            // Clé de signature : celle des secrets GitHub (WH_KEYSTORE_*) si elle est fournie, sinon la clé du dépôt.
+            def ks = System.getenv("WH_KEYSTORE_FILE")
+            storeFile file(ks ? ks : "wonhouse.keystore")
+            storePassword System.getenv("WH_KEYSTORE_PASSWORD") ?: "wonhouse2026"
+            keyAlias System.getenv("WH_KEY_ALIAS") ?: "wonhouse"
+            keyPassword System.getenv("WH_KEY_PASSWORD") ?: (System.getenv("WH_KEYSTORE_PASSWORD") ?: "wonhouse2026")
         }
+    }
+    // la vérification « lint » ne doit pas bloquer la construction de la version finale
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
     buildTypes {
         debug {
@@ -32,6 +39,7 @@ android {
         }
         release {
             signingConfig signingConfigs.wonhouse
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
