@@ -69,7 +69,7 @@ function rubrique(nom) {
 const MODES = [["sur place", "Sur place", "table"], ["à emporter", "À emporter", "emporter"], ["livraison", "Livraison", "moto"]];
 
 const ST = { menu: null, panier: {}, vue: "menu", rub: "tout", q: "", fiche: null, commandes: lireCommandes(), suivi: null, suiviId: null, envoi: false, err: "", geo: "", payErr: "", payEnvoi: false };
-const form = { mode: TABLE_URL ? "sur place" : "", table: TABLE_URL, adresse: "", nom: lire("whc-nom"), tel: lire("whc-tel"), note: "", pos: null, paie: "", op: "", payNum: lire("whc-tel"), payRef: "" };
+const form = { mode: TABLE_URL ? "sur place" : "", table: TABLE_URL, adresse: "", nom: lire("whc-nom"), tel: lire("whc-tel"), note: "", parrain: "", pos: null, paie: "", op: "", payNum: lire("whc-tel"), payRef: "" };
 
 /* ---------------- livraison : distance et frais ---------------- */
 // Distance à vol d'oiseau (km) entre deux points GPS.
@@ -98,6 +98,13 @@ function operateurs() {
 }
 const telUssd = (code) => "tel:" + code.replace(/#/g, "%23");
 
+// Parrainage : le numéro du parrain voyage dans la remarque de la commande (« [Parrain: 70…] »),
+// ce qui ne demande aucun changement des règles de sécurité du serveur.
+function noteAvecParrain() {
+  const par = String(form.parrain || "").replace(/[^\d+ ]/g, "").trim().slice(0, 20);
+  const tag = !ST.commandes.length && par.replace(/\D/g, "").length >= 8 ? ` [Parrain: ${par}]` : "";
+  return (form.note.trim().slice(0, 300 - tag.length) + tag).trim();
+}
 function lire(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
 function ecrire(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function lireCommandes() { try { return JSON.parse(localStorage.getItem("whc-commandes") || "[]"); } catch (e) { return []; } }
@@ -207,6 +214,7 @@ function vueMenu() {
   ${ferme ? `<div class="bandeau ko">Les commandes sont fermées pour le moment. Vous pouvez regarder le menu.</div>` : ""}
   ${TABLE_URL ? `<div class="bandeau info">Vous êtes à la table <b>${esc(TABLE_URL)}</b></div>` : ""}
   ${blocInstaller()}
+  <div class="bandeau info fidpub">🎁 <b>10 repas = le 11<sup>e</sup> offert</b> · 🤝 Parrainez un ami : <b>une boisson offerte</b> à sa première commande</div>
   <div id="liste">${listeHTML()}</div>
   ${ST.menu.tel ? `<div class="pad" style="margin-top:22px"><a class="lien" href="tel:${esc(ST.menu.tel)}">${I.tel} Appeler le restaurant · ${esc(ST.menu.tel)}</a></div>` : ""}`;
 }
@@ -306,6 +314,7 @@ function vuePanier() {
     <label class="lab2" for="f-nom" style="margin-top:0">Votre nom</label><input class="champ" id="f-nom" maxlength="60" autocomplete="name" value="${esc(form.nom)}" placeholder="ex. Awa">
     <label class="lab2" for="f-tel">Téléphone ${m === "livraison" ? "" : "(facultatif)"}</label><input class="champ" id="f-tel" type="tel" maxlength="30" autocomplete="tel" value="${esc(form.tel)}" placeholder="ex. 70 00 00 00">
     <label class="lab2" for="f-note">Une précision ? (facultatif)</label><input class="champ" id="f-note" maxlength="300" value="${esc(form.note)}" placeholder="ex. sans piment, bien cuit…">
+    ${!ST.commandes.length ? `<label class="lab2" for="f-par">Première commande ? Qui vous a conseillé WON HOUSE ? (facultatif)</label><input class="champ" id="f-par" type="tel" maxlength="20" value="${esc(form.parrain)}" placeholder="Numéro de la personne — elle recevra une boisson offerte">` : ""}
   </div>
   ${ST.err ? `<div class="alerte" role="alert">${esc(ST.err)}</div>` : ""}
   <div style="height:140px"></div>
@@ -451,7 +460,7 @@ function toast(msg) {
 /* ---------------- actions ---------------- */
 function lireForm() {
   const g = (id) => { const el = document.getElementById(id); return el ? el.value : null; };
-  ["table:f-table", "adresse:f-adr", "nom:f-nom", "tel:f-tel", "note:f-note", "payNum:p-num", "payRef:p-ref"].forEach(x => { const [k, id] = x.split(":"); const v = g(id); if (v !== null) form[k] = v; });
+  ["table:f-table", "adresse:f-adr", "nom:f-nom", "tel:f-tel", "note:f-note", "parrain:f-par", "payNum:p-num", "payRef:p-ref"].forEach(x => { const [k, id] = x.split(":"); const v = g(id); if (v !== null) form[k] = v; });
 }
 
 function demanderPosition() {
@@ -593,7 +602,7 @@ async function envoyer() {
     nom: form.nom.trim().slice(0, 60), tel: form.tel.trim().slice(0, 30),
     mode: form.mode, table: form.mode === "sur place" ? form.table.trim().slice(0, 10) : "",
     adresse: form.mode === "livraison" ? form.adresse.trim().slice(0, 200) : "",
-    note: form.note.trim().slice(0, 300), code, statut: "nouvelle", at: serverTimestamp(),
+    note: noteAvecParrain(), code, statut: "nouvelle", at: serverTimestamp(),
   };
   ST.envoi = true; render();
   try {

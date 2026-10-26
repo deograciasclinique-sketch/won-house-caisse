@@ -334,6 +334,17 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
 .cs-week{background:var(--accent-soft);border-radius:16px;padding:12px 14px;margin:4px 0 14px}
 .cs-week b{display:block;margin-bottom:6px}
 .cs-week ol{margin:0;padding-left:20px;font-size:14.5px;line-height:1.5}
+/* ---- Fidélité et parrainage ---- */
+.fidline{display:flex;align-items:center;gap:8px;width:100%;margin-top:8px;border:1px dashed var(--line);background:var(--bg);border-radius:12px;padding:9px 12px;font-weight:800;font-size:13.5px;color:inherit;text-align:left}
+.fidline .g{margin-left:auto;color:var(--accent)}
+.fidline.ok{border-style:solid;border-color:var(--sun,#E0A21B);background:var(--warn-soft,#FFF4DC)}
+.dots{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0 6px}
+.dots span{aspect-ratio:1;border-radius:50%;border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:18px}
+.dots span.on{border:2px solid var(--accent);background:var(--accent-soft)}
+.fid-gift{display:flex;align-items:center;gap:10px;border-radius:12px;background:var(--warn-soft,#FFF4DC);padding:10px 12px;margin:8px 0;font-weight:700;font-size:14px}
+.fid-gift .btn{margin:0 0 0 auto;flex:none}
+.fid-note{color:var(--muted);font-size:13px;margin:6px 2px;line-height:1.4}
+.cmd .fidok{background:var(--warn-soft,#FFF4DC);font-weight:700}
 </style>
 
 <div class="wrap">
@@ -881,15 +892,108 @@ function noterClients(list){
   if(!S.rep||readOnly||!REP()||!list) return;
   list.forEach(c=>{
     const tel=(c.tel||"").trim()||((c.paiement||{}).numero||"").trim(); const k=repKey(tel); if(!k) return;
-    const f=S.rep[k]||{}; if(f.cmds&&f.cmds[c.id]!==undefined) return;
+    let f=S.rep[k]||{};
+    // Fidélité : 1 tampon par commande servie ; le parrain est récompensé à la 1re commande servie du filleul.
+    if(c.statut==="servie"&&!(f.fid&&f.fid[c.id])){
+      const fd={fid:{[c.id]:c.at||Date.now()}};
+      f=S.rep[k]={...f,fid:{...(f.fid||{}),...fd.fid}}; REP().save(k,fd).catch(()=>{});
+      if(f.parrain) recompenserParrain(f.parrain,k,f);
+    }
+    if(f.cmds&&f.cmds[c.id]!==undefined) return;
     const at=c.at||Date.now();
     const data={tel:f.tel||tel,nomCmd:String(c.nom||"").slice(0,60),cmds:{[c.id]:Number(c.aPayer)||Number(c.total)||0},masque:false};
     if(!f.derniere||at>f.derniere) data.derniere=at;
     if(!f.premiere||at<f.premiere) data.premiere=at;
     if(c.mode==="livraison"&&c.adresse&&!f.adresse) data.adresse=String(c.adresse).slice(0,200);
     if(!f.cat) data.cat="Client";
+    // Parrainage indiqué par le client à sa toute première commande.
+    const mp=PARRAIN_RE.exec(String(c.note||""));
+    if(mp&&!f.parrain&&!Object.keys(f.cmds||{}).length){const pk=repKey(mp[1]);if(pk&&pk!==k){data.parrain=pk;data.parrainTel=mp[1].trim().slice(0,30);}}
     S.rep[k]={...f,...data,cmds:{...(f.cmds||{}),...data.cmds}};
     REP().save(k,data).catch(()=>{});
+  });
+}
+// ---- Carte de fidélité et parrainage ----
+// Tampons : 1 par commande en ligne servie (automatique) ou par repas sur place (bouton « +1 repas »).
+// Tous les FID_SEUIL tampons = 1 repas offert. Parrainage : le parrain reçoit 1 boisson offerte quand
+// la première commande de son filleul est servie (ou tout de suite si l'équipe note le parrain à la main).
+const FID_SEUIL=10;
+const PARRAIN_RE=/\[Parrain\s*:\s*([^\]]{6,30})\]/i;
+function fidInfo(f){
+  f=f||{}; const tampons=Object.keys(f.fid||{}).length;
+  const cad=Object.entries(f.cadeaux||{}).map(([id,c])=>({id,...c}));
+  const repasPris=cad.filter(c=>c.type==="repas").length;
+  const repas=Math.max(0,Math.floor(tampons/FID_SEUIL)-repasPris);
+  const boissons=cad.filter(c=>c.type==="boisson"&&!c.utilise);
+  // Carte pleine (10/10) tant que le repas offert n'est pas encore utilisé.
+  const cycle=tampons%FID_SEUIL===0&&repas>0?FID_SEUIL:tampons%FID_SEUIL;
+  return {tampons,cycle,repas,boissons,cadeaux:repas+boissons.length};
+}
+function fidResume(i){
+  const g=[]; if(i.repas) g.push(`${i.repas} repas offert${i.repas>1?"s":""}`); if(i.boissons.length) g.push(`${i.boissons.length} boisson${i.boissons.length>1?"s":""} offerte${i.boissons.length>1?"s":""}`);
+  return g.join(" + ");
+}
+function filleulsDe(k){return Object.entries(S.rep||{}).filter(([,f])=>f.parrain===k&&!f.masque).map(([fk,f])=>({k:fk,...f}));}
+// Récompense du parrain (une seule fois par filleul).
+function recompenserParrain(pk,filleulK,filleul){
+  if(!pk||pk===filleulK||!REP()) return;
+  const p=S.rep[pk]||{}; const id="par-"+filleulK;
+  if(p.cadeaux&&p.cadeaux[id]) return;
+  const data={cadeaux:{[id]:{type:"boisson",t:Date.now(),motif:"Parrainage de "+String(filleul.nom||filleul.nomCmd||repTelAff(filleul.tel)).slice(0,60)}},masque:false};
+  if(!p.tel) data.tel=filleul.parrainTel||pk.slice(1);
+  if(!p.cat) data.cat="Client";
+  if(!p.ajoute&&!p.premiere) data.ajoute=Date.now();
+  S.rep[pk]={...p,...data,cadeaux:{...(p.cadeaux||{}),...data.cadeaux}};
+  REP().save(pk,data).catch(()=>{});
+}
+function fidMessage(f){
+  const i=fidInfo(f); const nom=(f.nom||f.nomCmd||"").split(" ")[0];
+  const reste=FID_SEUIL-i.cycle;
+  return `Bonjour${nom?" "+nom:""} 👋\nVotre carte de fidélité WON HOUSE : ${i.cycle}/${FID_SEUIL} repas.\n`+
+    (i.cadeaux?`🎁 Vous avez droit à : ${fidResume(i)}. Venez en profiter !\n`:`Encore ${reste} repas et le suivant est offert 🎁\n`)+
+    `Parrainez un ami : à sa première commande, une boisson vous est offerte. Il suffit qu'il donne votre numéro en commandant.`;
+}
+function fidSheet(k){
+  const f=(S.rep||{})[k]; if(!f) return;
+  const i=fidInfo(f); const fil=filleulsDe(k); const par=f.parrain?S.rep[f.parrain]:null;
+  const nom=f.nom||f.nomCmd||"Client";
+  openSheet(`<h3>⭐ Fidélité — ${esc(nom)}</h3>
+    <div class="dots">${Array.from({length:FID_SEUIL},(_,n)=>`<span class="${n<i.cycle?"on":""}">${n<i.cycle?"🍲":""}</span>`).join("")}</div>
+    <p class="fid-note"><b>${i.cycle}/${FID_SEUIL}</b> sur la carte actuelle · ${i.tampons} repas au total. ${FID_SEUIL} repas = le suivant offert.</p>
+    ${i.repas?`<div class="fid-gift">🎁 ${i.repas} repas offert${i.repas>1?"s":""}<button class="btn primary small" data-use-repas ${readOnly?"disabled":""}>Utiliser</button></div>`:""}
+    ${i.boissons.map(b=>`<div class="fid-gift">🥤 Boisson offerte<small style="font-weight:600;color:var(--muted)">${esc(b.motif||"")}</small><button class="btn primary small" data-use-b="${esc(b.id)}" ${readOnly?"disabled":""}>Utiliser</button></div>`).join("")}
+    <div class="sheet-actions" style="margin-top:6px"><button class="btn ghost" data-plus ${readOnly?"disabled":""}>+1 repas (sur place)</button><button class="btn ghost" data-fwa>💬 Envoyer sa carte</button></div>
+    <h3 style="margin-top:16px;font-size:16px">🤝 Parrainage</h3>
+    ${f.parrain?`<p class="fid-note">Parrainé par <b>${esc(par?(par.nom||par.nomCmd||repTelAff(par.tel)):repTelAff(f.parrainTel||""))}</b>.</p>`:
+      `<div class="field"><label for="fpar">Qui lui a conseillé WON HOUSE ? (numéro du parrain)</label><div class="caisse"><input id="fpar" type="tel" inputmode="tel" maxlength="30" placeholder="Ex. : 70 00 00 00" ${readOnly?"disabled":""}><button class="btn small primary" data-par ${readOnly?"disabled":""}>Noter</button></div></div>
+      <p class="fid-note">Le parrain reçoit tout de suite une boisson offerte (une seule fois par nouveau client).</p>`}
+    ${fil.length?`<p class="fid-note">A parrainé <b>${fil.length}</b> client${fil.length>1?"s":""} : ${fil.map(x=>esc(x.nom||x.nomCmd||repTelAff(x.tel))).join(", ")}.</p>`:""}
+    <div class="sheet-actions"><button class="btn primary" data-cancel>Fermer</button></div>`,
+  sh=>{
+    sh.querySelector("[data-cancel]").addEventListener("click",closeSheet);
+    sh.querySelector("[data-fwa]").addEventListener("click",()=>{(window.__whOpenUrl||(x=>window.open(x,"_blank")))("https://wa.me/"+repIntl(f.tel)+"?text="+encodeURIComponent(fidMessage(f)));});
+    sh.querySelector("[data-plus]")?.addEventListener("click",e=>{
+      if(!e.target.dataset.sure){e.target.dataset.sure="1";e.target.textContent="Confirmer +1 repas ?";return;}
+      const id="m-"+Date.now(); const data={fid:{[id]:Date.now()},masque:false};
+      S.rep[k]={...f,fid:{...(f.fid||{}),...data.fid}}; REP().save(k,data).catch(()=>{});
+      const n=fidInfo(S.rep[k]); toast(n.cycle===FID_SEUIL?"🎉 10 repas ! Le prochain est offert":`⭐ ${n.cycle}/${FID_SEUIL}`); fidSheet(k); render();
+    });
+    sh.querySelector("[data-use-repas]")?.addEventListener("click",()=>{
+      const id="repas-"+Date.now(); const data={cadeaux:{[id]:{type:"repas",t:Date.now(),utilise:Date.now()}}};
+      S.rep[k]={...f,cadeaux:{...(f.cadeaux||{}),...data.cadeaux}}; REP().save(k,data).catch(()=>{});
+      toast("🎁 Repas offert utilisé"); fidSheet(k); render();
+    });
+    sh.querySelectorAll("[data-use-b]").forEach(b=>b.addEventListener("click",()=>{
+      const id=b.dataset.useB; const old=(f.cadeaux||{})[id]||{}; const data={cadeaux:{[id]:{...old,utilise:Date.now()}}};
+      S.rep[k]={...f,cadeaux:{...(f.cadeaux||{}),...data.cadeaux}}; REP().save(k,data).catch(()=>{});
+      toast("🥤 Boisson offerte utilisée"); fidSheet(k); render();
+    }));
+    sh.querySelector("[data-par]")?.addEventListener("click",()=>{
+      const t=sh.querySelector("#fpar").value.trim(); const pk=repKey(t);
+      if(!pk){toast("Numéro du parrain invalide.");return;} if(pk===k){toast("Un client ne peut pas être son propre parrain.");return;}
+      const data={parrain:pk,parrainTel:t}; S.rep[k]={...f,...data}; REP().save(k,data).catch(()=>{});
+      recompenserParrain(pk,k,S.rep[k]); toast("🤝 Parrain noté : boisson offerte au parrain"); fidSheet(k); render();
+    });
   });
 }
 function repListe(){
@@ -915,8 +1019,8 @@ const CONSEILS=[
   ["Les entreprises voisines","Visitez bureaux, écoles, banques et ateliers proches : proposez la livraison du midi avec un tarif de groupe."],
   ["Une enseigne visible","Visible depuis la route : le nom, une photo de plat et le numéro."]]},
  {ico:"🔁",t:"Faire revenir les clients",l:[
-  ["Carte de fidélité","Exemple : 10 repas achetés = le 11e offert."],
-  ["Parrainage","Un client qui amène un nouveau client reçoit une boisson offerte."],
+  ["Carte de fidélité","10 repas = le 11e offert. Déjà dans l'app : Répertoire → « ⭐ Fidélité » sur la fiche du client (+1 repas pour les clients sur place ; automatique pour les commandes en ligne)."],
+  ["Parrainage","Un client qui amène un nouveau client reçoit une boisson offerte. Le nouveau client donne le numéro de son parrain en commandant, ou l'équipe le note dans sa carte de fidélité."],
   ["Messages aux clients","Avec le Répertoire : nouveau plat, promo du vendredi, plats spéciaux pour Tabaski, Noël et les fêtes."],
   ["Journées spéciales","Exemple : « Mercredi brochettes », « Vendredi poisson braisé » — les clients prennent l'habitude."]]},
  {ico:"🛵",t:"La livraison",l:[
@@ -950,6 +1054,7 @@ function renderRepertoire(){
     <div class="nm">${esc(f.nomAff)}${f.cat!=="Client"?`<span class="cat">${esc(f.cat)}</span>`:""}</div>
     <div class="tl">${esc(repTelAff(f.tel))}</div>
     <div class="inf">${f.nb?`🛎️ ${f.nb} commande${f.nb>1?"s":""} en ligne${f.derniere?` · dernière le ${esc(new Date(f.derniere).toLocaleDateString("fr-FR"))}`:""}<br>`:""}${f.adresse?`📍 ${esc(f.adresse)}<br>`:""}${f.note?`📝 ${esc(f.note)}`:""}</div>
+    ${f.cat==="Client"?(()=>{const i=fidInfo(f);return `<button class="fidline ${i.cadeaux?"ok":""}" data-rep-fid="${esc(f.k)}">⭐ Fidélité ${i.cycle}/${FID_SEUIL}${i.cadeaux?` · 🎁 ${esc(fidResume(i))}`:""}${f.parrain?" · 🤝 parrainé":""}<span class="g">›</span></button>`;})():""}
     <div class="acts"><button class="btn ghost" data-rep-call="${esc(f.k)}">📞 Appeler</button><button class="btn ghost" data-rep-wa="${esc(f.k)}">💬 WhatsApp</button><button class="btn ghost" data-rep-edit="${esc(f.k)}" ${readOnly?"disabled":""} aria-label="Modifier ${esc(f.nomAff)}">✏️</button></div>
   </div>`).join(""):`<div class="empty">${tous.length?"Aucun contact ne correspond.":"Le répertoire est vide pour l'instant. Il se remplit tout seul avec les commandes des clients, ou touchez « + Ajouter »."}</div>`}`;
 }
@@ -986,6 +1091,7 @@ view.addEventListener("click",e=>{
   const call=e.target.closest("[data-rep-call]"); if(call){const f=S.rep[call.dataset.repCall];if(f)(window.__whOpenUrl||(x=>{location.href=x;}))("tel:"+String(f.tel).replace(/[^\d+]/g,""));return;}
   const wa=e.target.closest("[data-rep-wa]"); if(wa){const f=S.rep[wa.dataset.repWa];if(f)(window.__whOpenUrl||(x=>window.open(x,"_blank")))("https://wa.me/"+repIntl(f.tel));return;}
   const ed=e.target.closest("[data-rep-edit]"); if(ed&&!readOnly){repSheet(ed.dataset.repEdit);}
+  const fi=e.target.closest("[data-rep-fid]"); if(fi){fidSheet(fi.dataset.repFid);}
 });
 
 /* ---------- export ---------- */
@@ -1139,6 +1245,7 @@ function cmdCard(c){
     ${payHtml}
     ${fraisAttendu!==null&&Number(c.frais)!==fraisAttendu?`<div class="warn">⚠ Frais de livraison attendus : ${F(fraisAttendu)} (le client a ${F(c.frais||0)}). Vérifiez avec lui.</div>`:""}
     ${c.note?`<div class="noteC">📝 ${esc(c.note)}</div>`:""}
+    ${(()=>{const k=repKey((c.tel||"").trim()||((c.paiement||{}).numero||"").trim());const f=k&&S.rep&&S.rep[k];if(!f)return "";const i=fidInfo(f);return i.cadeaux?`<div class="noteC fidok">🎁 Ce client a droit à : ${esc(fidResume(i))}. <button class="btn ghost small" data-rep-fid="${esc(k)}" style="margin:4px 0 0">Voir sa carte</button></div>`:`<div class="noteC">⭐ Carte de fidélité : ${i.cycle}/${FID_SEUIL}</div>`;})()}
     ${totalFaux?`<div class="warn">⚠ Le total envoyé ne correspond pas aux plats (${F(somme)}). Encaissez le montant juste.</div>`:""}
     ${ecart||inconnu?`<div class="warn">⚠ ${inconnu?"Un plat n'est plus sur la carte.":"Un prix est différent de la carte actuelle."} Vérifiez avec le client.</div>`:""}
     ${c.statut==="servie"&&c.venteDate?`<div class="noteC">✓ Enregistrée dans les ventes du ${esc(parseISO(c.venteDate).toLocaleDateString("fr-FR"))}</div>`:""}
