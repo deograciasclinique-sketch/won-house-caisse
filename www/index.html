@@ -314,6 +314,26 @@ h2.sec span{font-family:var(--body);letter-spacing:0;text-transform:none;font-si
 .rep .acts .btn{flex:1;margin:0;padding:11px 8px;font-size:14px}
 .rep .cat{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:8px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:2px}
 .field textarea{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;font-size:16px;width:100%;box-sizing:border-box;font-family:inherit}
+/* ---- Conseils pour attirer les clients ---- */
+.tip{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:12px 14px;margin:0 0 12px;border-left:4px solid var(--sun,#E0A21B)}
+.tip .ico{font-size:24px;line-height:1}
+.tip small{display:block;color:var(--muted);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+.tip p{margin:2px 0 6px;font-size:14.5px;line-height:1.4}
+.tip button{background:none;border:0;padding:0;color:var(--accent);font-weight:800;font-size:13.5px}
+.cs-intro{color:var(--muted);font-size:14px;margin:0 2px 12px;line-height:1.45}
+.cs{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);margin:0 0 10px;overflow:hidden}
+.cs summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px;font-weight:800;font-size:15.5px}
+.cs summary::-webkit-details-marker{display:none}
+.cs summary .n{margin-left:auto;color:var(--muted);font-weight:700;font-size:13px}
+.cs summary::after{content:"›";font-size:22px;color:var(--muted);transition:transform .2s}
+.cs[open] summary::after{transform:rotate(90deg)}
+.cs ul{margin:0;padding:0 14px 12px 14px;list-style:none}
+.cs li{padding:9px 0;border-top:1px solid var(--line);font-size:14.5px;line-height:1.45}
+.cs li b{display:block;margin-bottom:1px}
+.cs li span{color:var(--muted)}
+.cs-week{background:var(--accent-soft);border-radius:16px;padding:12px 14px;margin:4px 0 14px}
+.cs-week b{display:block;margin-bottom:6px}
+.cs-week ol{margin:0;padding-left:20px;font-size:14.5px;line-height:1.5}
 </style>
 
 <div class="wrap">
@@ -481,6 +501,7 @@ function render(){
   if(S.tab==="carte") view.innerHTML=renderCarte();
   if(S.tab==="commandes") view.innerHTML=renderCommandes();
   if(S.tab==="repertoire") view.innerHTML=renderRepertoire();
+  if(S.tab==="conseils") view.innerHTML=renderConseils();
   updateBadge();
   window.scrollTo(0,sy);
   loadNames();
@@ -521,7 +542,7 @@ function renderJour(){
   ${ec===null?`<div class="caisse-ecart" style="color:var(--muted)">Le soir, comptez l'argent de la journée. L'écart doit être proche de 0.</div>`:`<div class="caisse-ecart">Attendu : <b class="num">${F(t.r)}</b> · Écart : <b class="num ${ec<0?"neg":ec>0?"pos":""}">${ec>0?"+":""}${F(ec)}</b>${ec<0?" (il manque de l'argent)":""}</div>`}</div>`;
   const h=new Date().getHours(); const hello=h<12?"Bonjour":h<18?"Bon après-midi":"Bonsoir";
   return `${banner()}
-  ${S.date===todayISO()?`<p class="greet">${hello} 👋 <b>bonne journée au WON HOUSE</b></p>`:""}
+  ${S.date===todayISO()?`<p class="greet">${hello} 👋 <b>bonne journée au WON HOUSE</b></p>${renderConseilJour()}`:""}
   <div class="daybar">
     <button class="arrow" data-act="prev" aria-label="Jour précédent">‹</button>
     <div class="d"><b>${esc(dayName(S.date))}</b><input type="date" id="pickdate" value="${S.date}" aria-label="Choisir une date"></div>
@@ -652,7 +673,7 @@ function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null;}}
 const WA_ICON=`<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z"/></svg>`;
 function openMenu(){
   const A=window.__whApp;
-  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["commandes","🛎️","Commandes clients","Menu en ligne, commandes reçues, QR code"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["repertoire","📇","Répertoire clients","Numéros des clients et contacts du restaurant"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
+  const nav=[["jour","📅","Aujourd'hui","Ventes, achats et caisse du jour"],["commandes","🛎️","Commandes clients","Menu en ligne, commandes reçues, QR code"],["journal","📒","Journal","Toutes les saisies"],["bilan","📊","Bilan du mois","Du 26 au 25"],["repertoire","📇","Répertoire clients","Numéros des clients et contacts du restaurant"],["conseils","💡","Conseils pour attirer les clients","Guide de toute l'équipe"],["carte","🍽️","Carte et réglages","Prix des plats, compte"]];
   openSheet(`<h3>Menu</h3><div class="menu-list">
     ${nav.map(([t,i,l,d])=>`<button class="menu-item" data-go="${t}"><span class="mi">${i}</span><span>${l}<small>${d}</small></span></button>`).join("")}
     <button class="menu-item" data-sync><span class="mi">🔄</span><span>Synchronisation<small>État de l'envoi, téléphones reliés</small></span></button>
@@ -879,6 +900,43 @@ function repListe(){
     .filter(f=>!q||f.nomAff.toLowerCase().includes(q)||(qd&&String(f.tel||"").replace(/\D/g,"").includes(qd))||String(f.adresse||"").toLowerCase().includes(q)||String(f.note||"").toLowerCase().includes(q))
     .sort((a,b)=>(b.derniere||b.majAt||0)-(a.derniere||a.majAt||0));
 }
+// ---- Conseils pour attirer les clients (lisibles par toute l'équipe) ----
+const CONSEILS=[
+ {ico:"🍲",t:"La qualité dans l'assiette",l:[
+  ["Un goût toujours le même","Un plat réussi un jour et raté le lendemain fait fuir. Notez les recettes et les quantités pour que tout cuisinier fasse pareil."],
+  ["Peu de plats, mais excellents","Mieux vaut 6 à 8 plats maîtrisés, et 1 ou 2 plats « signature » qu'on ne trouve que chez nous."],
+  ["La rapidité","Le midi, les travailleurs ont 30 à 45 minutes. Préparez le plat du jour à l'avance pour servir en moins de 10 minutes."],
+  ["Propreté et accueil","Tables et toilettes propres, sourire, et on retient le prénom des habitués. La relation compte autant que le plat."],
+  ["Des prix clairs","Toujours au moins un plat « petit budget » (500 à 1 000 F) pour les élèves, étudiants et travailleurs."]]},
+ {ico:"📣",t:"Se faire connaître",l:[
+  ["WhatsApp chaque matin","Publiez sur le statut ou la chaîne WON HOUSE la photo du menu du jour, avec le lien pour commander."],
+  ["Facebook et TikTok","Petites vidéos : le plat qui fume, la sauce qu'on verse, un client qui goûte. Les vidéos de nourriture se partagent beaucoup."],
+  ["Google Maps","Inscrivez le restaurant (gratuit) avec photos, horaires et numéro. Demandez aux clients contents de laisser un avis."],
+  ["Les entreprises voisines","Visitez bureaux, écoles, banques et ateliers proches : proposez la livraison du midi avec un tarif de groupe."],
+  ["Une enseigne visible","Visible depuis la route : le nom, une photo de plat et le numéro."]]},
+ {ico:"🔁",t:"Faire revenir les clients",l:[
+  ["Carte de fidélité","Exemple : 10 repas achetés = le 11e offert."],
+  ["Parrainage","Un client qui amène un nouveau client reçoit une boisson offerte."],
+  ["Messages aux clients","Avec le Répertoire : nouveau plat, promo du vendredi, plats spéciaux pour Tabaski, Noël et les fêtes."],
+  ["Journées spéciales","Exemple : « Mercredi brochettes », « Vendredi poisson braisé » — les clients prennent l'habitude."]]},
+ {ico:"🛵",t:"La livraison",l:[
+  ["Un client de plus sans place à table","Les commandes en ligne, Mobile Money et la livraison sont déjà dans l'app : faites-les connaître."],
+  ["Bien démarrer","Livraison offerte au-delà d'un certain montant, ou dans un petit rayon autour du restaurant."],
+  ["Un plat qui arrive bien","Un livreur fiable, des emballages qui gardent la chaleur, un plat propre et chaud à l'arrivée."]]},
+ {ico:"📊",t:"Suivre les chiffres",l:[
+  ["Chaque mois (du 26 au 25)","Dans le Bilan : les 3 plats qui se vendent le plus et le moins, les jours forts et les jours faibles."],
+  ["Ce que rapporte chaque plat","Prix de vente moins les achats : gardez les gagnants, remplacez les perdants."],
+  ["Les jours faibles","C'est le moment des promos et des journées spéciales."]]},
+];
+const CONSEILS_SEMAINE=["Publier chaque matin le menu du jour sur WhatsApp.","Inscrire le restaurant sur Google Maps.","Visiter 3 entreprises voisines pour la livraison du midi."];
+function conseilDuJour(){const tous=CONSEILS.flatMap(c=>c.l.map(x=>({ico:c.ico,t:x[0],d:x[1]})));const d=new Date();const j=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);return tous[j%tous.length];}
+function renderConseilJour(){const c=conseilDuJour();return `<div class="tip"><span class="ico">${c.ico}</span><div><small>Conseil du jour</small><p><b>${esc(c.t)}</b> — ${esc(c.d)}</p><button type="button" data-act="go-conseils">Lire tous les conseils ›</button></div></div>`;}
+function renderConseils(){
+  return `<h2 class="sec">Conseils pour attirer les clients</h2>
+  <p class="cs-intro">Pour toute l'équipe : la qualité dans l'assiette, se faire connaître, et donner envie de revenir. Touchez un titre pour l'ouvrir.</p>
+  <div class="cs-week"><b>🎯 À faire cette semaine</b><ol>${CONSEILS_SEMAINE.map(x=>`<li>${esc(x)}</li>`).join("")}</ol></div>
+  ${CONSEILS.map((c,i)=>`<details class="cs"${i===0?" open":""}><summary><span>${c.ico}</span>${esc(c.t)}<span class="n">${c.l.length}</span></summary><ul>${c.l.map(x=>`<li><b>${esc(x[0])}</b><span>${esc(x[1])}</span></li>`).join("")}</ul></details>`).join("")}`;
+}
 function renderRepertoire(){
   if(!REP()||S.mode!=="live") return `<h2 class="sec">Répertoire clients</h2><div class="empty">Connectez-vous au compte du restaurant pour voir le répertoire.</div>`;
   if(!S.rep) return `<h2 class="sec">Répertoire clients</h2><div class="empty">Chargement du répertoire…</div>`;
@@ -958,6 +1016,7 @@ view.addEventListener("click",e=>{
   else if(a==="pnext"){S.period=periodOf(addDays(S.period.end,1));S.anim=true;render();}
   else if(a==="export") exportMonth();
   else if(a==="go-rep") goTab("repertoire");
+  else if(a==="go-conseils") goTab("conseils");
   else if(a==="rep-add") repSheet();
   else if(a==="add-t"){const tt=readTarifsForm();tt.produits.push({nom:"",prix:0});S.tarifs=tt;render();document.getElementById("tn"+(tt.produits.length-1))?.focus();}
   else if(a==="save-t"){const tt=readTarifsForm();tt.produits=tt.produits.filter(p=>p.nom.trim());saveTarifs(tt);}
