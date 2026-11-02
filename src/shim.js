@@ -393,10 +393,44 @@ window.__whRappelJour = (dejaChoisi) => {
     } catch (e) {}
   });
 };
+/* ---------------- bilan de la semaine : chaque samedi à 21 h ----------------
+   Le propriétaire reçoit chaque samedi soir une notification « Revenus de la semaine ».
+   En la touchant, l'application ouvre le Bilan sur la semaine (dimanche → samedi).
+   Programmée pour les 8 prochains samedis (reprogrammée à chaque ouverture) ;
+   annulée sur les téléphones des gestionnaires. */
+const SEMAINE_BASE = 7600, SEMAINE_NB = 8, SEMAINE_HEURE = 21;
+let semaineSig = "";
+window.__whBilanSemaine = (actif) => {
+  preparerNotif().then(async (ok) => {
+    if (!ok) return;
+    const now = new Date();
+    const sig = now.toDateString() + "|" + (actif ? 1 : 0);
+    if (sig === semaineSig) return; semaineSig = sig;
+    try {
+      try { await LocalNotifications.createChannel({ id: "bilan", name: "Bilan de la semaine", description: "Chaque samedi soir : la somme des revenus de la semaine", importance: 4, visibility: 1, vibration: true }); } catch (e) {}
+      const ids = []; for (let k = 0; k < SEMAINE_NB + 1; k++) ids.push({ id: SEMAINE_BASE + k });
+      await LocalNotifications.cancel({ notifications: ids }).catch(() => {});
+      if (!actif) return;
+      const list = [];
+      const sam = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((6 - now.getDay() + 7) % 7), SEMAINE_HEURE, 0, 0);
+      for (let k = 0; list.length < SEMAINE_NB; k++) {
+        const at = new Date(sam.getFullYear(), sam.getMonth(), sam.getDate() + 7 * k, SEMAINE_HEURE, 0, 0);
+        if (at <= now) continue;
+        list.push({ id: SEMAINE_BASE + list.length, title: "📊 Revenus de la semaine WON HOUSE", body: "La semaine est finie : touchez pour voir la somme des ventes, des achats et le bénéfice de dimanche à samedi.", channelId: "bilan", schedule: { at, allowWhileIdle: true }, extra: { tab: "bilan", vue: "semaine" } });
+      }
+      await LocalNotifications.schedule({ notifications: list });
+    } catch (e) {}
+  });
+};
 if (Capacitor.isNativePlatform()) {
   LocalNotifications.addListener("localNotificationActionPerformed", (a) => {
     const tab = a && a.notification && a.notification.extra && a.notification.extra.tab;
     if (!tab) return;
+    if (tab === "bilan") {
+      const go = () => window.__whVoirSemaine && window.__whVoirSemaine();
+      document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => setTimeout(go, 800)) : setTimeout(go, 300);
+      return;
+    }
     const go = () => { const b = document.querySelector(`.tabs [data-tab="${tab}"]`); if (b) { b.click(); setTimeout(() => { const h = [...document.querySelectorAll("h2.sec")].find(x => x.textContent.trim() === "Menu du jour"); h && h.scrollIntoView({ behavior: "smooth" }); }, 400); } };
     document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", () => setTimeout(go, 800)) : setTimeout(go, 300);
   }).catch(() => {});
@@ -418,6 +452,11 @@ window.__whApp = {
     window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
   },
   version: () => (Capacitor.isNativePlatform() ? AppShare.getVersion().catch(() => null) : Promise.resolve(null)),
+  // envoie un texte (bilan de la semaine…) par WhatsApp ou une autre application
+  shareText: (text) => {
+    if (Capacitor.isNativePlatform()) return AppShare.shareText({ text });
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); return Promise.resolve();
+  },
 };
 
 /* ---------------- commandes des clients + menu public ----------------

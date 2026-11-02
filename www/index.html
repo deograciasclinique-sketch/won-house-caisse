@@ -409,6 +409,13 @@ function periodOf(s){ // 26 -> 25
   const end=new Date(start.getFullYear(),start.getMonth()+1,25);
   return {start:toISO(start),end:toISO(end)};
 }
+function weekOf(s){ // semaine du dimanche au samedi
+  const st=addDays(s,-parseISO(s).getDay()); return {start:st,end:addDays(st,6)};
+}
+function weekTotals(start){
+  let v=0,a=0,nb=0; for(let d=start,i=0;i<7;i++,d=addDays(d,1)){const day=S.days[d];if(!day)continue;const t=dayTotals(day);v+=t.v;a+=t.a;(day.ventes||[]).forEach(x=>nb+=Number(x.qte)||0);}
+  return {v,a,r:v-a,nb};
+}
 function dayTotals(day){
   const a=(day?.achats||[]).reduce((t,x)=>t+(Number(x.montant)||0),0);
   const v=(day?.ventes||[]).reduce((t,x)=>t+(Number(x.qte)||0)*(Number(x.prix)||0),0);
@@ -506,6 +513,7 @@ const view=document.getElementById("view");
 function render(){
   const sy=window.scrollY;
   if(S.mode==="loading")return;
+  planSemaine();
   if(S.tab==="jour") view.innerHTML=renderJour();
   if(S.tab==="journal") view.innerHTML=renderJournal();
   if(S.tab==="bilan") view.innerHTML=renderBilan();
@@ -607,7 +615,65 @@ function renderJournal(){
   }
   return html+"</div>";
 }
+function bilanToggle(){
+  const w=S.bview==="semaine";
+  return `<div class="chips" style="margin:2px 0 12px;display:grid;grid-template-columns:1fr 1fr" role="group" aria-label="Période du bilan"><button class="chip" data-act="bv-mois" aria-pressed="${!w}" style="text-align:center">📅 Mois<small>du 26 au 25</small></button><button class="chip" data-act="bv-semaine" aria-pressed="${w}" style="text-align:center">🗓️ Semaine<small>dimanche → samedi</small></button></div>`;
+}
+function renderSemaine(){
+  if(!S.week) S.week=weekOf(S.date);
+  const {start,end}=S.week; const today=toISO(new Date());
+  const T=weekTotals(start); const series=[]; let best=null,open=0; const prod={};
+  for(let d=start,i=0;i<7;i++,d=addDays(d,1)){
+    const day=S.days[d]; const t=dayTotals(day); series.push({d,v:t.v,r:t.r});
+    if(t.v>0)open++; if(t.v>0&&(!best||t.v>best.v))best={d,v:t.v};
+    (day?.ventes||[]).forEach(x=>{const q=Number(x.qte)||0;prod[x.produit]=prod[x.produit]||{q:0,m:0};prod[x.produit].q+=q;prod[x.produit].m+=q*(Number(x.prix)||0);});
+  }
+  const plist=Object.entries(prod).sort((a,b)=>b[1].m-a[1].m).slice(0,5); const pmax=Math.max(1,...plist.map(x=>x[1].m));
+  const encours=today>=start&&today<=end; const futur=start>today;
+  const lab=`${parseISO(start).toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})} → ${parseISO(end).toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}`;
+  // Les 8 dernières semaines (jusqu'à la semaine en cours)
+  const hist=[]; let w=weekOf(today).start; for(let k=0;k<8;k++){hist.push({start:w,...weekTotals(w)});w=addDays(w,-7);}
+  const hmax=Math.max(1,...hist.map(h=>h.v));
+  const prev=weekTotals(addDays(start,-7)); const diff=prev.v?(T.v-prev.v)/prev.v:null;
+  return `${banner()}${bilanToggle()}
+  <div class="period"><button class="arrow daybar-a icon-btn" data-act="wprev" aria-label="Semaine précédente">‹</button><div class="d">Semaine du ${lab}</div><button class="icon-btn" data-act="wnext" aria-label="Semaine suivante">›</button></div>
+  ${encours?`<div class="note" style="color:var(--muted);background:var(--surface-2)">⏳ Semaine en cours : le total sera complet samedi soir. Une notification vous l'annonce chaque samedi à 21 h.</div>`:""}
+  <div class="kpis" style="margin-top:10px">
+    <div class="kpi wide sun"><span class="kic">💵</span><div class="k">Somme des revenus de la semaine</div><div class="v num" style="font-size:26px" data-count="${T.v}">${F(T.v)}</div>${diff!==null&&!futur&&!encours?`<div class="s num ${diff<0?"neg":"pos"}" style="font-size:13px;font-weight:700">${diff>=0?"▲ +":"▼ "}${(diff*100).toFixed(0)} % par rapport à la semaine d'avant (${F(prev.v)})</div>`:""}</div>
+    <div class="kpi"><span class="kic">🛒</span><div class="k">Achats</div><div class="v num" data-count="${T.a}">${F(T.a)}</div></div>
+    <div class="kpi"><span class="kic">${T.r>=0?"📈":"📉"}</span><div class="k">Bénéfice</div><div class="v num ${T.r<0?"neg":"pos"}" data-count="${T.r}">${F(T.r)}</div></div>
+    <div class="kpi"><span class="kic">🍽️</span><div class="k">Articles vendus</div><div class="v num">${T.nb}</div></div>
+    <div class="kpi"><span class="kic">📅</span><div class="k">Moyenne / jour</div><div class="v num">${F(open?T.v/open:0)}</div></div>
+  </div>
+  ${best?`<p style="color:var(--muted);font-size:13.5px;margin:10px 2px 0">Meilleur jour : <b style="color:var(--ink)">${esc(dayName(best.d))}</b> avec ${F(best.v)}.</p>`:""}
+  <h2 class="sec">Ventes par jour</h2>
+  <div class="chart">${chartSVG(series,true)}</div>
+  ${plist.length?`<h2 class="sec">Ce qui a le plus rapporté</h2><div class="list">${plist.map(([n,o])=>`<div class="hbar"><span>${ico(n)||"🍽️"} <b>${esc(n)}</b> <span class="s" style="color:var(--muted)">× ${o.q}</span></span><span class="num amt">${F(o.m)}</span><span class="track"><i style="width:${(o.m/pmax*100).toFixed(1)}%;background:${PROD_COL[prodIndex(n)]}"></i></span></div>`).join("")}</div>`:""}
+  <h2 class="sec">Revenus des dernières semaines</h2>
+  <div class="list">${hist.map(h=>`<button class="row jrow" data-act="wgo" data-w="${h.start}" ${h.start===start?`style="background:var(--surface-2)"`:""}><span class="main"><span class="dname">${esc(parseISO(h.start).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}))} → ${esc(parseISO(addDays(h.start,6)).toLocaleDateString("fr-FR",{day:"numeric",month:"short"}))}</span>${h.start===weekOf(today).start?` <span class="s" style="color:var(--muted)">· en cours</span>`:""}
+      <span class="bar"><i style="width:${(h.v/hmax*100).toFixed(1)}%"></i></span></span>
+      <span style="text-align:right"><span class="amt num" style="display:block">${F(h.v)}</span><span class="s num ${h.r<0?"neg":"pos"}">${h.r>0?"+":""}${F(h.r)}</span></span></button>`).join("")}</div>
+  <div style="margin-top:16px"><button class="btn ghost" style="width:100%" data-act="wshare">📤 Envoyer le bilan de la semaine (WhatsApp…)</button></div>`;
+}
+function texteSemaine(){
+  const {start,end}=S.week; const T=weekTotals(start);
+  const f=d=>parseISO(d).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+  return `📊 WON HOUSE — Bilan de la semaine\nDu ${f(start)} au ${f(end)}\n\n💵 Revenus (ventes) : ${F(T.v)}\n🛒 Achats : ${F(T.a)}\n${T.r>=0?"📈":"📉"} Bénéfice : ${F(T.r)}\n🍽️ Articles vendus : ${T.nb}`;
+}
+function partagerSemaine(){
+  const txt=texteSemaine(); const A=window.__whApp;
+  if(A&&A.shareText) A.shareText(txt).catch(()=>{}); else window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");
+}
+// Notification du samedi touchée : ouvrir le Bilan sur la semaine qui se termine.
+window.__whVoirSemaine=()=>{S.bview="semaine";goTab("bilan");S.week=weekOf(toISO(new Date()));render();};
+// Notification « Revenus de la semaine » chaque samedi à 21 h : pour le propriétaire seulement.
+function planSemaine(){
+  if(!window.__whBilanSemaine||S.mode!=="live"||readOnly) return;
+  const A=window.__whAcces; if(A&&!A.pret) return;
+  window.__whBilanSemaine(chef());
+}
 function renderBilan(){
+  if(S.bview==="semaine") return renderSemaine();
   if(!S.period) S.period=periodOf(S.date);
   const {start,end}=S.period;
   const dates=Object.keys(S.days).filter(d=>d>=start&&d<=end).sort();
@@ -624,7 +690,7 @@ function renderBilan(){
   const clist=Object.entries(cat).sort((a,b)=>b[1]-a[1]);
   const pmax=Math.max(1,...plist.map(x=>x[1].m)), cmax=Math.max(1,...clist.map(x=>x[1]));
   const lab=`${parseISO(start).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})} → ${parseISO(end).toLocaleDateString("fr-FR",{day:"numeric",month:"short",year:"numeric"})}`;
-  return `${banner()}
+  return `${banner()}${bilanToggle()}
   <div class="period"><button class="arrow daybar-a icon-btn" data-act="pprev" aria-label="Mois précédent">‹</button><div class="d">Mois du ${lab}</div><button class="icon-btn" data-act="pnext" aria-label="Mois suivant">›</button></div>
   <div class="kpis">
     <div class="kpi sun"><span class="kic">💵</span><div class="k">Ventes</div><div class="v num" data-count="${V}">${F(V)}</div></div>
@@ -647,7 +713,7 @@ function renderBilan(){
   ${monthGallery(start,end)}
   ${downloads?`<div style="margin-top:16px"><button class="btn ghost" style="width:100%" data-act="export">Exporter le mois (fichier pour Excel)</button></div>`:""}`;
 }
-function chartSVG(series){
+function chartSVG(series,week){
   const W=Math.max(520,series.length*18), H=170, pl=44, pr=8, pt=10, pb=26;
   const max=Math.max(1000,...series.map(s=>s.v)); const step=niceStep(max/4); const top=Math.ceil(max/step)*step;
   const bw=(W-pl-pr)/series.length;
@@ -656,7 +722,7 @@ function chartSVG(series){
   for(let v=0;v<=top;v+=step){g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="var(--muted)">${v>=1000?(v/1000)+"k":v}</text>`;}
   series.forEach((s,i)=>{const x=pl+i*bw+bw*.18, w=bw*.64;
     if(s.v>0) g+=`<rect x="${x.toFixed(1)}" y="${y(s.v).toFixed(1)}" width="${w.toFixed(1)}" height="${(y(0)-y(s.v)).toFixed(1)}" rx="3" fill="url(#gbar)"><title>${shortDay(s.d)} : ${F(s.v)}</title></rect>`;
-    const dd=parseISO(s.d).getDate(); if(i===0||dd===1||dd%5===0) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--muted)">${dd}</text>`;});
+    const dd=parseISO(s.d).getDate(); if(week) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--muted)">${parseISO(s.d).toLocaleDateString("fr-FR",{weekday:"short"}).replace(".","")} ${dd}</text>`; else if(i===0||dd===1||dd%5===0) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--muted)">${dd}</text>`;});
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ventes par jour"><defs><linearGradient id="gbar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E39A1E"/><stop offset="1" stop-color="#B8352A"/></linearGradient></defs>${g}</svg>`;
 }
 function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const n=x/p;return (n<=1?1:n<=2?2:n<=5?5:10)*p;}
@@ -1106,7 +1172,7 @@ async function exportMonth(){
 }
 
 /* ---------- events ---------- */
-document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;S.tab=b.dataset.tab;S.anim=true;document.querySelectorAll(".tabs [data-tab]").forEach(x=>x.setAttribute("aria-selected",x===b));if(S.tab==="bilan")S.period=periodOf(S.date);window.scrollTo(0,0);render();});
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;S.tab=b.dataset.tab;S.anim=true;document.querySelectorAll(".tabs [data-tab]").forEach(x=>x.setAttribute("aria-selected",x===b));if(S.tab==="bilan"){S.period=periodOf(S.date);S.week=weekOf(S.date);}window.scrollTo(0,0);render();});
 view.addEventListener("click",e=>{
   const pvw=e.target.closest("[data-view]"); if(pvw){e.stopPropagation();viewPhoto(pvw.dataset.view,pvw.dataset.cap);return;}
   const c=e.target.closest("[data-cmd]"); if(c){cmdAction(c);return;}
@@ -1121,6 +1187,11 @@ view.addEventListener("click",e=>{
   else if(a==="pprev"){S.period=periodOf(addDays(S.period.start,-1));S.anim=true;render();}
   else if(a==="pnext"){S.period=periodOf(addDays(S.period.end,1));S.anim=true;render();}
   else if(a==="export") exportMonth();
+  else if(a==="bv-mois"||a==="bv-semaine"){S.bview=a==="bv-semaine"?"semaine":"mois";S.anim=true;render();}
+  else if(a==="wprev"){S.week=weekOf(addDays(S.week.start,-7));S.anim=true;render();}
+  else if(a==="wnext"){S.week=weekOf(addDays(S.week.start,7));S.anim=true;render();}
+  else if(a==="wgo"){S.week=weekOf(t.dataset.w);S.anim=true;render();window.scrollTo(0,0);}
+  else if(a==="wshare") partagerSemaine();
   else if(a==="go-rep") goTab("repertoire");
   else if(a==="go-conseils") goTab("conseils");
   else if(a==="rep-add") repSheet();
