@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
+import android.view.Window;
+import android.view.WindowManager;
 
 import androidx.core.content.FileProvider;
 
@@ -86,6 +88,25 @@ public class AppSharePlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Impossible d'ouvrir le lien : " + e.getMessage());
         }
+    }
+
+    /**
+     * Mode surveillance : garde l'écran allumé (la caméra ne s'arrête pas) et,
+     * si demandé, baisse la luminosité au minimum pour économiser la batterie.
+     */
+    @PluginMethod
+    public void keepAwake(PluginCall call) {
+        final boolean on = Boolean.TRUE.equals(call.getBoolean("on", true));
+        final boolean dim = Boolean.TRUE.equals(call.getBoolean("dim", false));
+        getActivity().runOnUiThread(() -> {
+            Window w = getActivity().getWindow();
+            if (on) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.screenBrightness = (on && dim) ? 0.01f : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+            w.setAttributes(lp);
+        });
+        call.resolve();
     }
 
     private void launch(Intent i, PluginCall call, String title) {

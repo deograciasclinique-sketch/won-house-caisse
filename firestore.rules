@@ -84,6 +84,25 @@ service cloud.firestore {
       allow write: if membre() && request.auth.uid == uid;
     }
 
+    /* ---------- surveillance (téléphone du service = caméra) ----------
+       Tout membre de l'équipe peut mettre un téléphone en mode caméra (écrire),
+       mais SEUL LE PROPRIÉTAIRE voit les photos et le direct (lire). */
+    function imageOk(d) { return d.data is string && d.data.size() > 100 && d.data.size() < 900000; }
+    match /surv_cameras/{id} {
+      allow read: if membre();
+      allow create, update: if membre();
+      allow delete: if proprietaire();
+    }
+    match /surv_alertes/{id} {
+      allow create: if membre() && imageOk(request.resource.data) && request.resource.data.keys().hasOnly(['cam', 'nom', 'at', 'data', 'score']);
+      allow read, delete: if proprietaire();
+      allow update: if false;
+    }
+    match /surv_direct/{id} {
+      allow create, update: if membre() && imageOk(request.resource.data) && request.resource.data.keys().hasOnly(['data', 'at']);
+      allow read, delete: if proprietaire();
+    }
+
     /* ---------- menu public ---------- */
     match /public/{docId} {
       allow read: if true;
