@@ -17,6 +17,7 @@ import { Share } from "@capacitor/share";
 import { registerPlugin, Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import SEED from "./seed.json";
+import { initSurveillance } from "./surveillance.js";
 
 const cfg = window.FIREBASE_CONFIG;
 let app = null, auth = null, fs = null, currentUser = null;
@@ -529,6 +530,19 @@ async function checkUpdate() {
   return null;
 }
 window.__whCheckUpdate = checkUpdate;
+
+/* ---------------- surveillance (téléphone du service = caméra) ---------------- */
+const SURV = initSurveillance({
+  getFs: () => fs,
+  getUser: () => currentUser,
+  getAcces: () => ACCES,
+  write,
+  notify: (t, b) => window.__whNotify && window.__whNotify(t, b),
+  keepAwake: (on, dim) => { if (Capacitor.isNativePlatform()) AppShare.keepAwake({ on, dim }).catch(() => {}); },
+  toast: (m) => shimToast(m),
+});
+window.__whSurveillance = () => SURV.ouvrir();
+window.__whSurvVeille = () => SURV.veilleProprietaire();
 window.__whOpenUrl = (url) => (Capacitor.isNativePlatform() ? AppShare.openUrl({ url }) : Promise.resolve(window.open(url, "_blank")));
 window.__whRefresh = async () => {
   if (!fs || !currentUser) return { ok: false, msg: "Connectez-vous d'abord." };
@@ -700,6 +714,7 @@ function watchAcces() {
       Object.assign(ACCES, { pret: true, protege: true, membres: m, role: m[monEmail()] || "" });
       if (!ACCES.role && !s.metadata.fromCache) return effacerTelephone("Ce compte ne fait plus partie de l'équipe WON HOUSE. Les données de ce téléphone ont été effacées. Demandez au propriétaire de vous ajouter.");
     }
+    if (ACCES.role === "proprietaire") window.__whSurvVeille && window.__whSurvVeille();
     window.__rerender && window.__rerender();
   }, (e) => {
     if (e && e.code === "permission-denied") effacerTelephone("Ce compte n'a pas accès à la caisse WON HOUSE. Demandez au propriétaire de vous ajouter dans « Équipe et accès ».");

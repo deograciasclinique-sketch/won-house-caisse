@@ -755,6 +755,7 @@ function openMenu(){
     ${nav.map(([t,i,l,d])=>`<button class="menu-item" data-go="${t}"><span class="mi">${i}</span><span>${l}<small>${d}</small></span></button>`).join("")}
     <button class="menu-item" data-sync><span class="mi">🔄</span><span>Synchronisation<small>État de l'envoi, téléphones reliés</small></span></button>
     <button class="menu-item" data-equipe><span class="mi">👥</span><span>Équipe et accès<small>${window.__whAcces&&window.__whAcces.protege?"Caisse protégée · rôle : "+(window.__whAcces.role==="proprietaire"?"propriétaire":"gestionnaire"):"⚠ Caisse pas encore protégée"}</small></span></button>
+    ${window.__whSurveillance?`<button class="menu-item" data-surv><span class="mi">📹</span><span>Surveillance<small>${(!window.__whAcces||!window.__whAcces.protege||window.__whAcces.role==="proprietaire")?"Caméras, mouvements détectés, direct":"Utiliser ce téléphone comme caméra"}</small></span></button>`:""}
     ${window.__whLock?`<button class="menu-item" data-lock><span class="mi">🔒</span><span>Verrouiller maintenant<small>Le code secret sera demandé</small></span></button>`:""}
     <div class="menu-sep"></div>
     <button class="menu-item wa" data-share="apk"><span class="mi">${WA_ICON}</span><span>Envoyer l'application par WhatsApp<small>Le fichier d'installation, même sans internet</small></span></button>
@@ -763,6 +764,7 @@ function openMenu(){
     if(A&&A.version) A.version().then(v=>{const f=sh.querySelector("#menu-ver");if(v&&v.version&&f)f.textContent="WON HOUSE · version "+v.version;});
     sh.addEventListener("click",async e=>{
       const go=e.target.closest("[data-go]"),sy=e.target.closest("[data-sync]"),share=e.target.closest("[data-share]");
+      if(e.target.closest("[data-surv]")){closeSheet();window.__whSurveillance();return;}
       if(e.target.closest("[data-lock]")){closeSheet();window.__whLock&&window.__whLock();return;}
       if(e.target.closest("[data-equipe]")){closeSheet();goTab("carte");setTimeout(()=>{const h=[...document.querySelectorAll("h2.sec")].find(x=>x.textContent.trim().startsWith("Équipe"));h&&h.scrollIntoView({behavior:"smooth"});},350);return;}
       if(go){closeSheet();goTab(go.dataset.go);}
